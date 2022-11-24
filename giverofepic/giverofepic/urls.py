@@ -1,15 +1,6 @@
 from django.contrib import admin
 from django.urls import path
-from ninja import NinjaAPI
-
-
-api = NinjaAPI()
-
-
-@api.get("/add")
-def add(request):
-    return
-
+from wallet.api import api
 
 urlpatterns = [
     path("admin/", admin.site.urls),
