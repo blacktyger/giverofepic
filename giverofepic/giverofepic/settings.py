@@ -25,6 +25,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    'wallet'
     ]
 
 X_FRAME_OPTIONS = "SAMEORIGIN"

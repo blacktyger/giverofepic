@@ -1,3 +1,5 @@
 from django.contrib import admin
 
-# Register your models here.
+from wallet.models import UserIP, Transaction, Wallet, EpicBoxAddress
+
+admin.site.register((Wallet, Transaction, UserIP, EpicBoxAddress))
