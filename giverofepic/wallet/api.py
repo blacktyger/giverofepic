@@ -22,7 +22,6 @@ def add(request):
 @api.get("/get_slates")
 def get_slates(request):
     dir = r"C:\Users\blacktyger\.epic\main\test_wallet"
-    password = "majkut11"
     # addr = "esZ7pubuHN4Dyn8WsCRjzhe12ZtgHqmnthGoopA1iSskm2xwXcKK"
 
     """# 1 Initialize sender wallet """
