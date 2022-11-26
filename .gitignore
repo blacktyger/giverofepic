@@ -5,7 +5,6 @@ giverofepic/wallet/migrations/__pycache__/
 /build/
 /setup.py
 /Pipfile.lock
-/giverofepic/wallet/epic_sdk/
 .idea/
 giverofepic/db.sqlite3
 *.sqlite3

@@ -1,0 +1,3 @@
+[submodule "giverofepic/wallet/epic_sdk"]
+	path = giverofepic/wallet/epic_sdk
+	url = https://github.com/blacktyger/epic-py

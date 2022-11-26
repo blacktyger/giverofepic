@@ -1,8 +1,6 @@
-import datetime
-import decimal
 import json
 
-from ninja import NinjaAPI, Schema
+from ninja import NinjaAPI
 
 from wallet.epic_sdk import Wallet
 from wallet.models import Transaction
