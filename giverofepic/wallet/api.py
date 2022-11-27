@@ -1,28 +1,47 @@
+import platform
 import json
 import os
+import time
 
-from ninja import NinjaAPI
 from django.db.models import Q
+from ninja import NinjaAPI
+import django_rq
+import requests
+from rq import get_current_job
+from rq.decorators import job
+from rq.job import Job
 
-from .const_values import *
+from .epic_sdk.utils import get_logger
 from .epic_sdk import Wallet, utils
+from . import tasks
+from .const_values import *
+
 from .models import Transaction, WalletState, get_wallet_status, connection_details, connection_authorized
 from .schema import TransactionSchema, CancelTransaction
 
 api = NinjaAPI()
+logger = get_logger()
 
 
 """
 Initialize Server Wallet - Epic-Box Sender I, 
 - executing outgoing transactions.
 """
-directory = r"C:\Users\blacktyger\.epic\main"
+if 'windows' in platform.system().lower():
+    directory = r"C:\Users\blacktyger\.epic\main"
+else:
+    directory = "/home/blacktyger/.epic/main"
+
 password = "majkut11"
 NAME = "epic_box_1"
 
 wallet = Wallet(wallet_dir=directory, password=password)
 wallet.state, _ = WalletState.objects.get_or_create(name=NAME)
-print(wallet.state.is_locked)
+logger.info(wallet.state.is_locked)
+
+"""Initialize Queue for managing task"""
+queue = django_rq.get_queue('default', default_timeout=800)
+redis_conn = django_rq.get_connection('default')
 
 
 @api.post("/send_transaction")
@@ -32,48 +51,23 @@ def send_tx(request, tx: TransactionSchema):
     if tx_args['error']: return tx_args
 
     # """ AUTHORIZE CONNECTION WITH TIME-LOCK FUNCTION """ #
-    authorized = connection_authorized(request, tx)
+    ip, address = connection_details(request, tx)
+    authorized = connection_authorized(ip, address, tx)
     if authorized['error']: return authorized
 
-    # """ GET OR WAIT FOR UNLOCKED INSTANCE """ #
-    is_unlocked = get_wallet_status(wallet)
-    if is_unlocked['error']: return is_unlocked
+    task = tasks.send_new_transaction.delay(
+        wallet_cfg=wallet.config.essential(),
+        connection=(ip.address, address.address),
+        state_id=wallet.state.id,
+        tx=tx.dict())
 
-    # """ MAKE SURE WALLET BALANCE IS SUFFICIENT """ #
-    if not wallet.is_balance_enough(tx.amount):
-        return utils.response(ERROR, wallet.state.error_msg())
+    return utils.response(SUCCESS, 'task in queue', {'task_id': task.id})
 
-    # """ START CREATING NEW TRANSACTION """ #
-    wallet.state.lock()  # Lock the wallet instance
 
-    ## >> Create TX slate
-    init_tx_slate = wallet.create_tx_slate(amount=tx.amount)
-
-    ## >> Parse tx_args and prepare transaction slate
-    try:
-        tx_args = Transaction.parse_init_slate(init_tx_slate)
-        tx_args['receiver_address'] = tx.receiver_address
-        tx_args['sender_address'] = wallet.epicbox.address
-        tx_args['status'] = "initialized"
-        tx_args['amount'] = tx.amount
-
-        ## >> Create new Transaction object
-        transaction = Transaction.objects.create(**tx_args)
-        post_tx = wallet.post_tx_slate(tx.receiver_address, init_tx_slate)
-
-        if post_tx:
-            # Update connection timestamps for time-lock function
-            print(connection_details(request, tx, update=True))
-            response = utils.response(SUCCESS, 'post tx success', transaction.tx_slate_id)
-        else:
-            response = utils.response(ERROR, f'post tx failed')
-
-    except Exception as e:
-        wallet.cancel_tx_slate(slate=init_tx_slate)
-        response = utils.response(ERROR, f"post tx failed and canceled, {str(e)}")
-
-    wallet.state.unlock()  # Release wallet
-    return response
+@api.get('/get_task/id={task_id}')
+async def get_task(request, task_id: str):
+    task = Job.fetch(task_id, redis_conn)
+    return {'status': task.get_status(), 'result': task.result}
 
 
 @api.get("/get_slates")
@@ -90,11 +84,11 @@ def get_slates(request):
     to_post = []
     posted = 0
 
-    print(">> Getting unprocessed slates from epic-box server..")
+    logger.info(">> Getting unprocessed slates from epic-box server..")
     encrypted_slates = wallet.get_tx_slates()
     w_addr = wallet.epicbox.address
 
-    print(">> Getting slates from local database..")
+    logger.info(">> Getting slates from local database..")
     txs = Transaction.objects.filter(
         Q(archived=False) and (Q(receiver_address=w_addr) | Q(sender_address=w_addr)))
 
@@ -102,7 +96,7 @@ def get_slates(request):
     txs_ids = [str(tx.tx_slate_id) for tx in txs]
 
     # Filter new slates and append to list
-    print(f">> Start decrypting {len(encrypted_slates)} slates")
+    logger.info(f">> Start decrypting {len(encrypted_slates)} slates")
     for encrypted_string in encrypted_slates:
         decrypted_slate = wallet.decrypt_tx_slates([encrypted_string])[0]
         slate_string, address = decrypted_slate
@@ -118,17 +112,17 @@ def get_slates(request):
             tx_.encrypted_slate = encrypted_string
 
             if 'initialized' in tx_.status:
-                print(f">> {tx_} ready to process")
+                logger.info(f">> {tx_} ready to process")
                 to_process.append(json.loads(slate_string))
 
             elif 'finalized' in tx_.status:
-                print(f">> {tx_} already finalized")
-                print(wallet.post_delete_tx_slate(receiving_address=w_addr, slate=encrypted_string))
+                logger.info(f">> {tx_} already finalized")
+                logger.info(wallet.post_delete_tx_slate(receiving_address=w_addr, slate=encrypted_string))
 
             elif 'finished' in tx_.status:
-                print(f">> {tx_} already finished")
+                logger.info(f">> {tx_} already finished")
                 tx_.archived = True
-                print(wallet.post_delete_tx_slate(receiving_address=w_addr, slate=encrypted_string))
+                logger.info(wallet.post_delete_tx_slate(receiving_address=w_addr, slate=encrypted_string))
 
                 # wallet.post_cancel_transaction(receiving_address=w_addr, tx_slate_id=incoming_slate_tx_id)
                 # wallet.post_delete_canceled_tx_slates(receiving_address=w_addr, tx_slate_id=incoming_slate_tx_id)
@@ -138,10 +132,10 @@ def get_slates(request):
         # most likely TxReceived type of slate, this wallet as receiver
         else:
             pass
-            # print(wallet.post_delete_tx_slate(receiving_address=w_addr, slate=encrypted_string))
+            # logger.info(wallet.post_delete_tx_slate(receiving_address=w_addr, slate=encrypted_string))
 
     # Process filtered slates
-    print(f">> Start processing {len(to_process)} slates..")
+    logger.info(f">> Start processing {len(to_process)} slates..")
     processed += wallet.process_tx_slates(to_process)
 
     if not processed:
@@ -154,20 +148,20 @@ def get_slates(request):
         to_post.append(tx_)
 
     # Post finalized transactions to the node (network)
-    print(f">> Start sending {len(to_post)} transactions..")
+    logger.info(f">> Start sending {len(to_post)} transactions..")
     for ready_tx in to_post:
-        print(f">> sending {ready_tx}...")
+        logger.info(f">> sending {ready_tx}...")
         post_tx = wallet.post_transaction(tx_slate_id=str(ready_tx.tx_slate_id))
-        print(post_tx)
+        logger.info(post_tx)
 
         if post_tx:
             ready_tx.status = 'finished'
             ready_tx.archived = True
             ready_tx.save()
-            print(f">> {ready_tx} posted, finished and archived successfully")
+            logger.info(f">> {ready_tx} posted, finished and archived successfully")
             posted += 1
         else:
-            print(f">> {ready_tx} failed to post, ")
+            logger.info(f">> {ready_tx} failed to post, ")
 
     report = {
         "slates_received": len(encrypted_slates),
@@ -179,6 +173,12 @@ def get_slates(request):
     wallet.state.unlock()  # Release the wallet instance
 
     return utils.response(SUCCESS, 'success', report)
+
+
+@api.get('/test_queue')
+def test_queue(request):
+    queue = django_rq.get_queue('default', default_timeout=800)
+    queue.enqueue(requests.get, args=('https://localhost:8000/get_transactions',))
 
 
 @api.get("/get_transactions")
@@ -196,13 +196,13 @@ def cancel_transaction(request, cancel: CancelTransaction):
 @api.post("/process_slates")
 def process_slates(request, slates: str):
     slates = wallet.get_tx_slates()
-    print(f"Processing {len(slates)} received slates")
+    logger.info(f"Processing {len(slates)} received slates")
     return wallet.process_tx_slates(slates)
 
 
 @api.post("/finalize_transaction")
 def finalize_transactions(request, slates: str):
-    print(os.getcwd())
+    logger.info(os.getcwd())
     with open('a.json', 'r') as f:
         slates = f.read()
 

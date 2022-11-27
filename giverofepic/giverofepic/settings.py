@@ -13,6 +13,8 @@ SECRET_KEY = 'django-insecure-j(^wo3dcrhjjo_8z2#2)5%u64$*i=eu=p^bes4dsmm-^*ot^(i
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "giverofepic.settings")
+
 ALLOWED_HOSTS = []
 
 # Application definition
@@ -27,28 +29,19 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django_rq',
-    'wallet'
+    'website',
+    'wallet',
     ]
 
 RQ_QUEUES = {
     'default': {
-        'HOST': 'localhost',
-        'PORT': 49153,
+        'HOST': '209.127.179.199',
+        'PORT': 6379,
         'DB': 0,
-        'PASSWORD': 'redispw',
         'DEFAULT_TIMEOUT': 360,
         },
-    # 'with-sentinel': {
-    #     'SENTINELS': [('localhost', 26736), ('localhost', 26737)],
-    #     'MASTER_NAME': 'redismaster',
-    #     'DB': 0,
-    #     'PASSWORD': 'secret',
-    #     'SOCKET_TIMEOUT': None,
-    #     'CONNECTION_KWARGS': {
-    #         'socket_connect_timeout': 0.3
-    #     },
-    # },
     }
+
 
 X_FRAME_OPTIONS = "SAMEORIGIN"
 SILENCED_SYSTEM_CHECKS = ["security.W019"]

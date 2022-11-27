@@ -150,22 +150,30 @@ class Transaction(models.Model):
 def connection_details(request, tx, update: bool = False):
     address, created = ReceiverAddr.objects.get_or_create(address=tx.receiver_address)
     address.last_activity = timezone.now()
-    if update: address.last_success_tx = timezone.now()
-    address.save()
 
     ip, is_routable = get_client_ip(request)
     if ip:
         ip, created = IPAddr.objects.get_or_create(address=ip)
         ip.last_activity = timezone.now()
-        if update: ip.last_success_tx = timezone.now()
-        ip.save()
+
+    if update: update_connection_details(ip, address)
 
     return ip, address
 
 
-def connection_authorized(request, tx):
-    ip, address = connection_details(request, tx)
+def update_connection_details(ip, address):
+    ip_, created = IPAddr.objects.get_or_create(address=ip)
+    address_, created = ReceiverAddr.objects.get_or_create(address=address)
 
+    ip_.last_success_tx = timezone.now()
+    ip_.save()
+
+    address_.last_success_tx = timezone.now()
+    address_.save()
+
+    return ip, address
+
+def connection_authorized(ip, address, tx):
     if ip.is_now_locked():
         return utils.response(ERROR, ip.locked_msg())
 
