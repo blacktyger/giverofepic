@@ -1,6 +1,7 @@
 /tests.py
 /giverofepic/giverofepic/__pycache__/
 /giverofepic/wallet/__pycache__/
+/giverofepic/wallet/epic-sdk/
 giverofepic/wallet/migrations/__pycache__/
 giverofepic/wallet/migrations/
 /build/
@@ -12,3 +13,4 @@ giverofepic/db.sqlite3
 */__pycache__/
 */*/__pycache__/
 */*/*/__pycache__/
+/giverofepic/wallet/migrations/

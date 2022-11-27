@@ -1,5 +1,5 @@
 from django.contrib import admin
 
-from wallet.models import UserIP, Transaction, Wallet, EpicBoxAddress
+from wallet.models import *
 
-admin.site.register((Wallet, Transaction, UserIP, EpicBoxAddress))
+admin.site.register((WalletState, Transaction, ReceiverAddr, IPAddr))
