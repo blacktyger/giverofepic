@@ -2,6 +2,7 @@
 /giverofepic/giverofepic/__pycache__/
 /giverofepic/wallet/__pycache__/
 giverofepic/wallet/migrations/__pycache__/
+giverofepic/wallet/migrations/
 /build/
 /setup.py
 /Pipfile.lock

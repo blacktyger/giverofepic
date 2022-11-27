@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -25,9 +26,29 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-
+    'django_rq',
     'wallet'
     ]
+
+RQ_QUEUES = {
+    'default': {
+        'HOST': 'localhost',
+        'PORT': 49153,
+        'DB': 0,
+        'PASSWORD': 'redispw',
+        'DEFAULT_TIMEOUT': 360,
+        },
+    # 'with-sentinel': {
+    #     'SENTINELS': [('localhost', 26736), ('localhost', 26737)],
+    #     'MASTER_NAME': 'redismaster',
+    #     'DB': 0,
+    #     'PASSWORD': 'secret',
+    #     'SOCKET_TIMEOUT': None,
+    #     'CONNECTION_KWARGS': {
+    #         'socket_connect_timeout': 0.3
+    #     },
+    # },
+    }
 
 X_FRAME_OPTIONS = "SAMEORIGIN"
 SILENCED_SYSTEM_CHECKS = ["security.W019"]
