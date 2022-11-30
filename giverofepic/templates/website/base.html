@@ -1,0 +1,57 @@
+{% load static %}
+
+<!doctype html>
+<html lang="en">
+
+    <head>
+        <!-- Required meta tags -->
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <link rel="apple-touch-icon" sizes="180x180" href="{%  static '/img/icons/apple-touch-icon.png' %}">
+        <link rel="icon" type="image/png" sizes="32x32" href="{%  static '/img/icons/favicon-32x32.png' %}">
+        <link rel="icon" type="image/png" sizes="16x16" href="{%  static '/img/icons/favicon-16x16.png' %}">
+        <link rel="manifest" href="{%  static '/img/icons/site.webmanifest' %}">
+        <link rel="mask-icon" href="{%  static '/img/icons/safari-pinned-tab.svg' %}" color="#5bbad5">
+
+        <meta name="msapplication-TileColor" content="#fbfbfb">
+        <meta name="theme-color" content="#ffffff">
+
+        <!-- Bootstrap CSS -->
+        <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+        <link href="{%  static '/cdns/5.0.2_dist_css_bootstrap.css' %}" rel="stylesheet">
+        <link href="{%  static '/style_n.css' %}" rel="stylesheet">
+        <link href="{%  static '/style.css' %}" rel="stylesheet">
+
+        <script src="https://kit.fontawesome.com/d60f5a0aa7.js" crossorigin="anonymous"></script>
+        <script src="{%  static '/cdns/11.6.5_dist_sweetalert2.all.js' %}"></script>
+        <script src="{%  static '/cdns/jquery-3.6.1.slim.js' %}"> </script>
+
+        <title>Easy Miner: Calculator</title>
+    </head>
+    <body class="p-0 m-0">
+
+        <section class="app-logo">
+            <div class="row justify-content-center">
+                <div class="col-12 text-center">
+                    <img src="{% static 'img/giverofepic_logo_dark.png' %}"
+                         alt='em-logo' class="img-fluid">
+                </div>
+            </div>
+        </section>
+
+        <section class="app-body">
+            <div class="row justify-content-center">
+                <div class="col-12"
+                     style="min-width: 420px;
+                            max-width: 680px">
+                    {% block body %} {% endblock %}
+                </div>
+            </div>
+        </section>
+
+        <!-- Bootstrap Bundle with Popper -->
+        <script src="{%  static '/cdns/5.0.2_dist_js_bootstrap.bundle.js' %}"></script>
+    </body>
+
+</html>

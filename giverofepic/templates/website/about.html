@@ -1,0 +1,17 @@
+{% extends "website/base.html" %}
+
+{% block body %}
+    <div class="container" style="max-width: 800px">
+        <div class="card rounded m-3">
+            <div class="card-body">
+                <a target="_blank" href="{{ doc_url }}" class="ms-2 fs-3 text-dark">
+                    <span class="material-icons fs-2">description</span>
+                    Google Document
+                    <sup><span class="material-icons">open_in_new</span></sup>
+                </a>
+                <hr>
+                <iframe style="height: 1000px; width: 100%" src="{{ embed_url }}"></iframe>
+            </div>
+        </div>
+    </div>
+{% endblock %}

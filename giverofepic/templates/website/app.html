@@ -1,0 +1,85 @@
+{% load static %}
+
+<div class="row my-3 justify-content-center">
+    <div class="col-11 px-0">
+
+        {# INFO #}
+        <div class="row justify-content-between">
+            <div class="col-12 text-start text-muted ms-2">
+                <span class="fs-1">
+                    <span class="material-icons align-middle"
+                          style="font-size: 2.5rem;">
+                        wallet
+                    </span>
+                    Wallet Address
+                </span>
+                <hr class="m-0 mt-1 me-2 text-muted"/>
+                <span class="text-muted">
+                    Provide your <a href="/"><b>Stack-Wallet</b></a> address.
+                </span>
+            </div>
+        </div>
+
+        {# ADDRESS INPUT #}
+        <div class="input-group ps-2 pt-2 mt-4">
+            <span class="input-group-text" id="basic-addon2">
+                <span class="material-icons addressIcon fs-1">done_all</span>
+            </span>
+            <input type="text" class="form-control p-2 walletAddress" required
+                   placeholder="Address.."
+                   aria-describedby="basic-addon2"
+                   aria-label="walletAddress"
+                   name="walletAddress" id="walletAddress">
+        </div>
+
+        {# ADDRESS FEEDBACK #}
+        <div class="text-end mt-1" style="height: 15px;">
+            <span class="text-muted addressFeedback"></span>
+        </div>
+    </div>
+</div>
+
+{# PROGRESS FEEDBACK #}
+<div class="row justify-content-center">
+    <div class="col-auto">
+        <div class="text-white text-center feedbackField"></div>
+    </div>
+</div>
+
+{# CONFIRM BUTTON #}
+<div class="row justify-content-center mt-4">
+    <div class="col-11 text-center p-0 ps-2">
+        <button class="btn btn-success btn-lg bg-green w-100"
+                disabled id="sendTransactionButton" onClick="sendTransaction()">
+            CONFIRM
+        </button>
+    </div>
+</div>
+
+{#GIVER OF EPIC STATUE #}
+<div class="row my-3 justify-content-center">
+    <div class="col-auto text-center">
+        <img class="mt-2" src="{% static 'img/giverofepic_statue.png' %}" alt='STATUE'>
+    </div>
+</div>
+
+
+{# FOOTER #}
+<div class="card-footer text-center mt-5">
+   <div class="row">
+       <div class="col-12">
+           <div class="small text-muted mt-0">
+                                          <img src="{% static 'img/epicenter-logo-h500.png' %}" alt="epic-logo" height="20">
+
+               <a class="mx-1" href="https://blacktyg3r.com" target="_blank">
+                    Created by <b>BT-LABS</b><sup><small>TM</small></sup>
+               </a>
+               | <a class="mx-1" href="https://epic.tech" target="_blank">epic.tech</a>
+            </div>
+       </div>
+   </div>
+</div>
+
+<script src="{%  static '/scripts/calculator/scripts.js' %}"></script>
+<script src="{%  static '/scripts/calculator/input_listeners.js' %}"></script>
+
