@@ -2,22 +2,6 @@
     padding: 5px;
 }
 
-.navbar {
-    background-color: #353535;
-}
-
-.text-costs {
-    color: #dfc2c4;
-}
-
-.text-income {
-    color: #b6effb;
-}
-
-.text-profit {
-    color: #20c997;
-}
-
 .addressIcon {
     color: grey;
 }
@@ -46,21 +30,6 @@
 .help-icon {
         cursor: pointer;
     }
-.input-end {
-    width: 30%;
-    background-color: #EEEFED;
-    color: #353535
-}
-
-.input-start {
-    width: 20%;
-    background-color: #EEEFED;
-    color: #353535
-}
-
-.accordion-header {
-    cursor: pointer;
-}
 
 .material-icons {
     vertical-align: middle;
@@ -79,41 +48,5 @@ a:hover {
 body{
     padding:50px;
     height: 100%;
-background: #1c1f23;
-/*background: radial-gradient(circle, rgba(60,61,60,1) 14%, rgba(40,40,40,1) 61%);*/
+    background: #1c1f23;
 }
-/*.wrapper{*/
-/*  width:70%;*/
-/*}*/
-/*@media(max-width:992px){*/
-/* .wrapper{*/
-/*  width:100%;*/
-/*}*/
-/*}*/
-.panel-heading {
-  padding: 0;
-	border:0;
-}
-.panel-title>a, .panel-title>a:active{
-	display:block;
-	padding:15px;
-  color:#555;
-  font-size:16px;
-  font-weight:bold;
-	text-transform:uppercase;
-	letter-spacing:1px;
-  word-spacing:3px;
-	text-decoration:none;
-}
-.panel-heading  a:before {
-   font-family: 'Glyphicons Halflings';
-   content: "\e114";
-   float: right;
-   transition: all 0.5s;
-}
-.panel-heading.active a:before {
-	-webkit-transform: rotate(180deg);
-	-moz-transform: rotate(180deg);
-	transform: rotate(180deg);
-}
-

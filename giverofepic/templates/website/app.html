@@ -1,11 +1,11 @@
 {% load static %}
 
-<div class="row my-3 justify-content-center">
+<div class="row mt-2 justify-content-center">
     <div class="col-11 px-0">
 
         {# INFO #}
         <div class="row justify-content-between">
-            <div class="col-12 text-start text-muted ms-2">
+            <div class="col-12 text-start text-secondary ms-2">
                 <span class="fs-1">
                     <span class="material-icons align-middle"
                           style="font-size: 2.5rem;">
@@ -42,15 +42,15 @@
 {# PROGRESS FEEDBACK #}
 <div class="row justify-content-center">
     <div class="col-auto">
-        <div class="text-white text-center feedbackField"></div>
+        <div class="text-white text-center feedbackField fs-4" style="height: 25px"></div>
     </div>
 </div>
 
 {# CONFIRM BUTTON #}
-<div class="row justify-content-center mt-4">
+<div class="row justify-content-center">
     <div class="col-11 text-center p-0 ps-2">
         <button class="btn btn-success btn-lg bg-green w-100"
-                disabled id="sendTransactionButton" onClick="sendTransaction()">
+                disabled id="confirmButton" onClick="sendTransaction()">
             CONFIRM
         </button>
     </div>
@@ -63,13 +63,12 @@
     </div>
 </div>
 
-
 {# FOOTER #}
 <div class="card-footer text-center mt-5">
    <div class="row">
        <div class="col-12">
            <div class="small text-muted mt-0">
-                                          <img src="{% static 'img/epicenter-logo-h500.png' %}" alt="epic-logo" height="20">
+               <img src="{% static 'img/epicenter-logo-h500.png' %}" alt="epic-logo" height="20">
 
                <a class="mx-1" href="https://blacktyg3r.com" target="_blank">
                     Created by <b>BT-LABS</b><sup><small>TM</small></sup>
@@ -80,6 +79,6 @@
    </div>
 </div>
 
-<script src="{%  static '/scripts/calculator/scripts.js' %}"></script>
-<script src="{%  static '/scripts/calculator/input_listeners.js' %}"></script>
+<script src="{%  static '/scripts/scripts.js' %}"></script>
+<script src="{%  static '/scripts/input_listeners.js' %}"></script>
 

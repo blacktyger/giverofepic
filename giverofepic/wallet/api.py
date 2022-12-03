@@ -74,7 +74,7 @@ async def get_task(request, task_id: str):
     """
     try:
         task = Job.fetch(task_id, redis_conn)
-        return {'status': task.get_status(), 'result': task.result}
+        return {'status': task.get_status(), 'message': task.message, 'result': task.result}
     except Exception as e:
         return utils.response(ERROR, f'Task not found: {task_id} \n {str(e)}')
 

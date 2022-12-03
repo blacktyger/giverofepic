@@ -1,59 +1,89 @@
-let API_CALLS = 0
+let feedbackField = $('.feedbackField')
+let confirmButton = $('#confirmButton')
+let addressIcon = $('.addressIcon')
+let address = $('#walletAddress')
+
 
 const spinnerHTMLsm = `<div class="spinner-grow spinner-grow-sm fs-6" role="status"></div>`
-const spinnerHTML = `<div class="spinner-grow spinner-grow-sm ms-1" role="status"></div>
-                     <div class="spinner-grow spinner-grow-sm" role="status"></div>
-                     <div class="spinner-grow spinner-grow-sm" role="status"></div>`
-
-
-
-// Accordion buttons animation
-let rotation1 = 0;
-
-$(document).ready(function(){
-    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
-    const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
-
-    $("#costsIcon").rotate(rotation1);
-
-    $("#headingOne").click(function(){
-        rotation1 += 180;
-        $("#costsIcon").rotate(rotation1);
-    });
-});
-
-
-async function updateTask(taskId) {
-    let query = `/api/get_task/id=${taskId}`
-
-    return await fetch(query, {
-        method: 'GET',
-        headers: {
-            'Accept': '*/*',
-            'Content-Type': 'application/json'
-        }
-    });
-}
+const spinnerHTML = `<div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>
+                     <div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>
+                     <div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>`
 
 // esZ7pubuHN4Dyn8WsCRjzhe12ZtgHqmnthGoopA1iSskm2xwXcKK
 
-checkStatus = async (response) => {
-    if (response.status >= 200 && response.status < 300)
-      return await response.json()
-    let feedbackField = $('.feedbackField')
-    feedbackField.text(response.status)
+
+function transactionFailedAlert(reason) {
+        Swal.fire({
+        icon: 'warning',
+        title: `REQUEST UNSUCCESSFUL`,
+        html:`${reason}`,
+        position: 'center',
+        showConfirmButton: true,
+        confirmButtonText: `<i class="fa fa-check"></i> OK`
+    }).then((result) => {console.log(result)})
+}
+
+
+// SweetAlert2 instance spawned when first step of the transaction was successful
+// and script is waiting for receiving wallet to send response slate.
+function listenForResponseAlert() {
+    let timerInterval
+
+    Swal.fire({
+        // icon: 'info',
+        // iconHtml:`<span class="fs-6">?</span>`,
+        // title: `<!--<i class="fa-regular fa-circle-check"></i> CONFIRM TRANSACTION-->`,
+        html:
+            `<div class="card mt-1 bg-blue text-light">
+                 <div class="card-img"><img class="card-img" src="static/img/stack-wallet.png"></div>
+                 <div class="card-body">
+                     Open your <b>Stack-Wallet</b> and confirm incoming transaction.
+                     <a href="#" data-bs-toggle="tooltip" data-bs-title="
+                        Just open your wallet, it will be done automatically after full synchronization">
+                        <b><sup><i class="fa-solid fa-circle-info text-light"></i></sup></b>
+                     </a>
+                     <br><br>
+                     <p>After <span><b>180</b></span> seconds transaction will be automatically canceled.</p>
+                 </div>
+             </div>`,
+        timer: 1000*60*3,
+        position: 'center',
+        timerProgressBar: true,
+        showCancelButton: true,
+        cancelButtonText: `<i class="fa fa-xmark"></i> CANCEL TRANSACTION`,
+        allowOutsideClick: false,
+        cancelButtonColor: 'orange',
+        showConfirmButton: true,
+        confirmButtonText: `<i class="fa fa-check"></i> CONFIRM`,
+        confirmButtonColor: 'green',
+
+
+        didOpen: () => {
+            // Swal.showLoading()
+            getToolTips()
+            const b = Swal.getHtmlContainer().querySelector('span').querySelector('b')
+            timerInterval = setInterval(() => {
+                b.textContent = (Swal.getTimerLeft() / 1000).round(0)
+            }, 1000)
+        },
+        willClose: () => {clearInterval(timerInterval)}
+    }).then((result) => {
+        console.log(result)
+        //TODO: Closed by timer: cancel transaction and remove slate
+        if (result.dismiss === Swal.DismissReason.timer) {
+        console.log('I was closed by the timer')
+        }
+    })
 }
 
 
 async function sendTransaction() {
-    let address = $('#walletAddress')
-    let feedbackField = $('.feedbackField')
+    let taskFinished = false
     let amount = 0.01
     let query = "api/initialize_transaction"
     let body = {receiver_address: address.val(), amount: amount}
-    let taskFinished = false
-
-    feedbackField.html(spinnerHTML)
+    confirmButton.attr('disabled', 'true')
+    confirmButton.html(spinnerHTML)
 
     let response = await fetch(query, {
         method: 'POST',
@@ -62,134 +92,85 @@ async function sendTransaction() {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify(body),
-    }).then(checkStatus)
+      }).then(checkStatus)
         .then(r => r)
         .catch(err => console.log(err))
 
     if (response) {
         if (!response.error && 'result' in response) {
             let taskId = response.result.task_id
-            let task = await updateTask(taskId)
-                .then(response => response.json())
-                .catch(err => {console.log(err)})
+            let task = await getTaskStatus(taskId)
 
             while (!taskFinished) {
                 if (task.status === 'finished') {
                     console.log(task.status)
                     taskFinished = true
+                    taskFeedback(task)
+                    confirmButton.html('CONFIRM')
+
                 } else if (task.status === 'failed') {
                     console.log(task.status)
                     taskFinished = true
-                } else if (task.status === 'queued'){
-                    console.log(task.status)
-                    // feedbackField.text(task.status)
-                    await sleep(3000)
-
-                    task = await updateTask(taskId)
-                    .then(response => response.json())
-                    .catch(err => {console.log(err)})
-
+                    confirmButton.html('CONFIRM')
                     console.log(task)
+                    transactionFailedAlert(task)
+
+                } else {
+                    await sleep(2000)
+                    task = await getTaskStatus(taskId)
+                    console.log(task.status)
                 }
             }
         } else {
             taskFinished = true
-            feedbackField.text(response.message)
-        }
-    }
-}
-
-// Return URL to flag .svg for given currency code
-function getFlagIcon(currencyCode) {
-    const currencyToCountry = {'GBP': 'gb', 'USD': 'us', 'EUR': 'eu', 'PLN': 'pl', 'CNY': 'cn'}
-    return `frontend/static/img/flags/${currencyToCountry[currencyCode]}.svg`
-}
-
-
-// Return URL to flag .svg for given currency code
-function getPoolIcon(pool) {
-    return `frontend/static/img/${pool}`
-}
-
-
-async function updateCalculator() {
-    // Get values from all fields and save as object
-    const body = {
-        "unit": $(".hashrateUnits").html(),
-        "hashrate": $("#hashrate").val(),
-        "algorithm": $("#algorithmSelect").val(),
-        "currency": $("#currencySelect").val(),
-        "pool": $("#poolSelect").val(),
-        "pool_fee": $("#pool_fee").val(),
-        "energy_price": $("#energy").val(),
-        "power_consumption": $("#consumption").val()
-    }
-
-    // Update UI fields before api call
-    updateAlgo(body.algorithm)
-    $('.hashrate').text($('#hashrate').val())
-
-    // Execute API call only if all fields have value (0 is accepted)
-    if (body.hashrate && body.power_consumption &&
-        body.energy_price && body.pool_fee) {
-
-        const data = await apiCall(body, '/calculate', "POST")
-        console.log('API RESPONSE:' + data)
-
-        if (data) {
-            // Update UI fields after success api call
-            $('#result-income-1').text(parseFloat(data.coins_per_day[1]).round(3))
-            $('#result-income-7').text((parseFloat(data.coins_per_day[1]) * 7).round(3))
-            $('#result-costs-1').text(parseFloat(data.cost_total[1]).round(3))
-            $('#result-costs-7').text((parseFloat(data.cost_total[1]) * 7).round(3))
-            $('#result-profit-1').text(parseFloat(data.profit_per_day[1]).round(3))
-            $('#result-profit-7').text((parseFloat(data.profit_per_day[1]) * 7).round(3))
-            $('.epic-price').text(parseFloat(data.epic_price).round(2))
-        } else {
-            console.log('API CALL UNSUCCESSFUL')
+            feedbackField.html(response.message)
         }
     }
 }
 
 
-async function apiCall(body, query, method='POST') {
-    let spinnerField = $('#resultSpinner')
-    let beforeSpinner = spinnerField.html()
+// HANDLE FINISHED TASK
+function taskFeedback(task) {
+    console.log(task.result);
 
-    if (beforeSpinner === spinnerHTML) {
-        console.log('API CALLS IN THIS SESSION: ', API_CALLS)
+    if (!task.result) {
+        console.log('error: task finished but no results');
         return
     }
 
-    API_CALLS += 1
-    spinnerField.html(spinnerHTML)
-
-    let response = await fetch(query, {
-        method: method,
-        headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body),
-    }).then(response => response.json()
-    ).catch(err => console.log(err))
-
-    spinnerField.html(beforeSpinner)
-    console.log('API CALLS IN THIS SESSION: ', API_CALLS)
-    return response
+    if (task.result.error) {
+        let addr = address.val()
+        address.attr('disabled', 'true').val('')
+        address.attr('placeholder', addr)
+        addressIcon.css('color', 'grey');
+        transactionFailedAlert(task.result.message)
+    } else {
+        listenForResponseAlert()
+    }
 }
 
 
-// Update algorithm related fields
-function updateAlgo(algorithm) {
-    const algoSettings = {
-        'progpow': {icon: 'sports_esports', units: 'MH/s', hardware: 'GPU'},
-        'randomx': {icon: 'memory', units: 'KH/s', hardware: 'CPU'},
-        'cuckoo': {icon: 'dns', units: 'GH/s', hardware: 'ASIC'}
+// GET TASK STATUS FROM REDIS/QUEUE
+async function getTaskStatus(taskId) {
+    let query = `/api/get_task/id=${taskId}`
+
+    return await fetch(query, {
+        method: 'GET',
+        headers: {
+            'Accept': '*/*',
+            'Content-Type': 'application/json'
         }
-    $('.gearIcon').text(algoSettings[algorithm]['icon'])
-    $('.gearType').text(algoSettings[algorithm]['hardware'])
-    $('.hashrateUnits').text(algoSettings[algorithm]['units'])
+    }).then(response => response.json())
+      .catch(err => {console.log(err)})
+}
+
+
+// FEEDBACK IF CONNECTION WITH DB FAILED
+checkStatus = async (response) => {
+    if (response.status >= 200 && response.status < 300)
+        return await response.json()
+
+    feedbackField.text(response.status)
 }
 
 
@@ -210,44 +191,23 @@ function toast(text='', icon='info', timer=3000, timerProgressBar=false) {
     });
 }
 
-
+// ROUND NUMBERS
 Number.prototype.round = function(places) {
   return +(Math.round(this + "e+" + places)  + "e-" + places);
 }
 
-jQuery.fn.rotate = function(degrees) {
-    $(this).css({'-webkit-transform' : 'rotate('+ degrees +'deg)',
-                 '-moz-transform' : 'rotate('+ degrees +'deg)',
-                 '-ms-transform' : 'rotate('+ degrees +'deg)',
-                 'transform' : 'rotate('+ degrees +'deg)'});
-};
 
-// ===================== NOTEPAD
+//TOOLTIP
+$(document).ready(function(){
+    getToolTips()
+});
 
-
-
-// document.addEventListener('DOMContentLoaded', function () {
-//     keep_alive_server()
-//     try {setInterval(keep_alive_server, 5 * 1000)()
-//     } catch (error) {}
-// });
-
-// Running Loop keeping alive connection with back-end
-function keep_alive_server() {
-    fetch(document.location + "keep-alive/?alive=true", {
-        method: 'GET',
-        cache: 'no-cache'
-    })
-        .then(resp => resp.json())
-        .then(data => {
-            document.getElementById("heightText").innerHTML = data.height
-            document.getElementById("algoIcon").innerHTML = data.algo.icon
-            document.getElementById("algoText").innerHTML = data.algo.text
-            document.getElementById("deltaText").innerHTML = data.delta
-        })
-        .catch(error => {console.error(error)});
-    }
-
+function getToolTips() {
+    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
+    const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
+}
+// SLEEP/WAIT FUNCTION
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
+
