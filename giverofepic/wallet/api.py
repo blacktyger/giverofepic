@@ -74,7 +74,8 @@ async def get_task(request, task_id: str):
     """
     try:
         task = Job.fetch(task_id, redis_conn)
-        return {'status': task.get_status(), 'message': task.message, 'result': task.result}
+        message = task.meta['message'] if 'message' in task.meta else 'No message'
+        return {'status': task.get_status(), 'message': message, 'result': task.result}
     except Exception as e:
         return utils.response(ERROR, f'Task not found: {task_id} \n {str(e)}')
 
@@ -94,6 +95,21 @@ def finalize_transaction(request):
 
     except Exception as e:
         return utils.response(ERROR, 'finalize_transaction task failed', {str(e)})
+
+
+@api.get("/cancel_transaction/tx_slate_id={tx_slate_id}")
+def cancel_transaction(request, tx_slate_id: str):
+    print(tx_slate_id)
+
+    try:
+        task = tasks.cancel_transaction.delay(
+                wallet_cfg=wallet.config.essential(),
+                state_id=wallet.state.id,
+                tx_slate_id=tx_slate_id)
+        return utils.response(SUCCESS, 'task enqueued', {'task_id': task.id, 'queue_len': queue.count})
+
+    except Exception as e:
+        return utils.response(ERROR, 'cancel_transaction task failed', {str(e)})
 
 
 @api.get("/validate_address/address={address}")

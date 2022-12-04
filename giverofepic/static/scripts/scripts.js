@@ -15,24 +15,31 @@ const spinnerHTML = `<div class="spinner-grow spinner-grow-sm align-middle" role
 function transactionFailedAlert(reason) {
         Swal.fire({
         icon: 'warning',
-        title: `REQUEST UNSUCCESSFUL`,
-        html:`${reason}`,
+        title: `UNSUCCESSFUL`,
+        html:`
+            ${reason}
+            <hr class="mt-4" />
+            <div class="my-2">
+                Need support? Join
+                <a href="https://t.me/GiverOfEpic" target="_blank" class="text-dark">
+                    <i class="fa-brands fa-telegram ms-1"></i> <b>GiverOfEpic</b>. 
+                </a>
+            </div>
+            <hr class="mb-2" />
+             `,
         position: 'center',
         showConfirmButton: true,
-        confirmButtonText: `<i class="fa fa-check"></i> OK`
-    }).then((result) => {console.log(result)})
+        confirmButtonText: `<i class="fa fa-check"></i> CONFIRM`,
+    }).then((result) => {console.log('alert result:', result)})
 }
 
 
 // SweetAlert2 instance spawned when first step of the transaction was successful
 // and script is waiting for receiving wallet to send response slate.
-function listenForResponseAlert() {
+function listenForResponseAlert(task) {
     let timerInterval
 
     Swal.fire({
-        // icon: 'info',
-        // iconHtml:`<span class="fs-6">?</span>`,
-        // title: `<!--<i class="fa-regular fa-circle-check"></i> CONFIRM TRANSACTION-->`,
         html:
             `<div class="card mt-1 bg-blue text-light">
                  <div class="card-img"><img class="card-img" src="static/img/stack-wallet.png"></div>
@@ -44,6 +51,9 @@ function listenForResponseAlert() {
                      </a>
                      <br><br>
                      <p>After <span><b>180</b></span> seconds transaction will be automatically canceled.</p>
+                 </div>
+                 <div class="card-footer mb-0 pb-0">
+                     <small class="text-dark"><pre>ID: ${task.result.result['tx_slate_id']}</pre></small>
                  </div>
              </div>`,
         timer: 1000*60*3,
@@ -57,7 +67,6 @@ function listenForResponseAlert() {
         confirmButtonText: `<i class="fa fa-check"></i> CONFIRM`,
         confirmButtonColor: 'green',
 
-
         didOpen: () => {
             // Swal.showLoading()
             getToolTips()
@@ -67,11 +76,29 @@ function listenForResponseAlert() {
             }, 1000)
         },
         willClose: () => {clearInterval(timerInterval)}
-    }).then((result) => {
-        console.log(result)
-        //TODO: Closed by timer: cancel transaction and remove slate
-        if (result.dismiss === Swal.DismissReason.timer) {
-        console.log('I was closed by the timer')
+
+    }).then((aResult) => {
+        let tResult = task.result.result
+        console.log(aResult)
+        console.log(tResult)
+
+        // Closed by timer
+        // TODO: cancel transaction and remove slate
+        if (aResult.dismiss === Swal.DismissReason.timer) {
+            console.log('tx slate id', tResult['tx_slate_id'])
+            cancelTransaction(tResult['tx_slate_id'])
+
+        // Canceled by user
+        // TODO: cancel transaction and remove slate
+        } else if (aResult.dismiss === Swal.DismissReason.cancel) {
+            console.log('Canceled by user')
+            console.log('tx slate id', tResult['tx_slate_id'])
+            cancelTransaction(tResult['tx_slate_id'])
+
+        // Confirmed by user
+        // TODO: finalize_transaction
+        } else if (aResult.isConfirmed) {
+           console.log('Confirmed by user')
         }
     })
 }
@@ -84,6 +111,9 @@ async function sendTransaction() {
     let body = {receiver_address: address.val(), amount: amount}
     confirmButton.attr('disabled', 'true')
     confirmButton.html(spinnerHTML)
+
+    // transactionFailedAlert('dupa')
+    // listenForResponseAlert({})
 
     let response = await fetch(query, {
         method: 'POST',
@@ -145,7 +175,7 @@ function taskFeedback(task) {
         addressIcon.css('color', 'grey');
         transactionFailedAlert(task.result.message)
     } else {
-        listenForResponseAlert()
+        listenForResponseAlert(task)
     }
 }
 
@@ -155,6 +185,21 @@ async function getTaskStatus(taskId) {
     let query = `/api/get_task/id=${taskId}`
 
     return await fetch(query, {
+        method: 'GET',
+        headers: {
+            'Accept': '*/*',
+            'Content-Type': 'application/json'
+        }
+    }).then(response => response.json())
+      .catch(err => {console.log(err)})
+}
+
+
+// CANCEL TRANSACTION / DELETE SLATE
+function cancelTransaction(tx_slate_id) {
+    let query = `/api/cancel_transaction/tx_slate_id=${tx_slate_id}`
+
+    return fetch(query, {
         method: 'GET',
         headers: {
             'Accept': '*/*',

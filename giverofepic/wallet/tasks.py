@@ -1,10 +1,9 @@
-import json
-
 from rq import get_current_job
 from django.db.models import Q
 from rq.decorators import job
 import django_rq
 import django
+import json
 import os
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "giverofepic.settings")
@@ -23,6 +22,43 @@ logger = get_logger()
 
 """Initialize Queue for managing task"""
 redis_conn = django_rq.get_connection('default')
+
+
+@job('epicbox', redis_conn, timeout=30)
+def cancel_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
+    wallet = Wallet(**wallet_cfg)
+    this_task = get_current_job()
+    wallet.state = WalletState.objects.get(id=state_id)
+
+    logger.info(f">> start working on task {this_task.id}")
+
+    # """ GET OR WAIT FOR UNLOCKED INSTANCE """ #
+    is_unlocked = get_wallet_status(wallet)
+    if is_unlocked['error']:
+        this_task.meta['message'] = f"Wallet locked, cancel failed"
+        this_task.save_meta()
+        return is_unlocked
+
+    transaction = Transaction.objects.filter(tx_slate_id=tx_slate_id).first()
+    print(transaction)
+
+    if transaction:
+        print(transaction.encrypted_slate)
+
+        print('cancel local')
+        print(wallet.cancel_tx_slate(tx_slate_id=tx_slate_id))
+
+        print('post delete')
+        print(wallet.post_delete_tx_slate(
+            receiving_address=transaction.receiver_address,
+            slate=transaction.encrypted_slate))
+
+        print('post cancel')
+        print(wallet.post_cancel_transaction(
+            receiving_address=transaction.receiver_address,
+            tx_slate_id=tx_slate_id))
+
+        return utils.response(SUCCESS, 'transaction canceled')
 
 
 @job('epicbox', redis_conn, timeout=30)
@@ -146,18 +182,26 @@ def send_new_transaction(tx: dict, wallet_cfg: dict, connection: tuple, state_id
     """
     tx = TransactionSchema.parse_obj(tx)
     wallet = Wallet(**wallet_cfg)
+    this_task = get_current_job()
     wallet.state = WalletState.objects.get(id=state_id)
 
-    logger.info(f">> start working on task {get_current_job().id}")
+    logger.info(f">> start working on task {this_task.id}")
+
     # """ GET OR WAIT FOR UNLOCKED INSTANCE """ #
     is_unlocked = get_wallet_status(wallet)
-    if is_unlocked['error']: return is_unlocked
+
+    if is_unlocked['error']:
+        this_task.meta['message'] = f"Can't process your request right now, please try again later."
+        this_task.save_meta()
+        return is_unlocked
 
     # wallet.state.lock()  # Lock the wallet instance
 
     # """ MAKE SURE WALLET BALANCE IS SUFFICIENT """ #
     if not wallet.is_balance_enough(tx.amount):
         logger.warning('not enough balance')
+        this_task.meta['message'] = f"Not enough balance, please try again later."
+        this_task.save_meta()
         return utils.response(ERROR, wallet.state.error_msg())
 
     # """ START CREATING NEW TRANSACTION """ #
@@ -174,12 +218,16 @@ def send_new_transaction(tx: dict, wallet_cfg: dict, connection: tuple, state_id
 
         ## >> Create new Transaction object
         transaction = Transaction.objects.create(**tx_args)
-        post_tx = wallet.post_tx_slate(tx.receiver_address, init_tx_slate)
+        response_, encrypted_slate = wallet.post_tx_slate(tx.receiver_address, init_tx_slate)
 
-        if post_tx:
+        print(response_, encrypted_slate)
+
+        if response_:
             # Update connection timestamps for time-lock function
             logger.info(update_connection_details(*connection))
-            response = utils.response(SUCCESS, 'post tx success', transaction.tx_slate_id)
+            transaction.encrypted_slate = json.loads(encrypted_slate)['str']
+            transaction.save()
+            response = utils.response(SUCCESS, 'post tx success', {'tx_slate_id': transaction.tx_slate_id})
         else:
             response = utils.response(ERROR, f'post tx failed')
 
