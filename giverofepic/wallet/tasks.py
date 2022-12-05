@@ -6,6 +6,7 @@ import django
 import json
 import os
 
+# Must be called before imports from Django components.
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "giverofepic.settings")
 django.setup()
 
@@ -17,8 +18,8 @@ from .epic_sdk import Wallet
 from .epic_sdk import utils
 
 
+"""Initialize Logger"""
 logger = get_logger()
-
 
 """Initialize Queue for managing task"""
 redis_conn = django_rq.get_connection('default')
@@ -30,7 +31,7 @@ def cancel_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
     this_task = get_current_job()
     wallet.state = WalletState.objects.get(id=state_id)
 
-    logger.info(f">> start working on task {this_task.id}")
+    logger.info(f">> start working on task cancel_transaction {this_task.id}")
 
     # """ GET OR WAIT FOR UNLOCKED INSTANCE """ #
     is_unlocked = get_wallet_status(wallet)
@@ -40,30 +41,23 @@ def cancel_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
         return is_unlocked
 
     transaction = Transaction.objects.filter(tx_slate_id=tx_slate_id).first()
-    print(transaction)
-
     if transaction:
-        print(transaction.encrypted_slate)
+        # Cancel in local wallet history
+        logger.info(f"Local wallet transaction: {wallet.cancel_tx_slate(tx_slate_id=tx_slate_id)}")
 
-        print('cancel local')
-        print(wallet.cancel_tx_slate(tx_slate_id=tx_slate_id))
-
-        print('post delete')
-        print(wallet.post_delete_tx_slate(
+        # Cancel in epic-box server
+        cancel = wallet.post_cancel_transaction(
             receiving_address=transaction.receiver_address,
-            slate=transaction.encrypted_slate))
-
-        print('post cancel')
-        print(wallet.post_cancel_transaction(
-            receiving_address=transaction.receiver_address,
-            tx_slate_id=tx_slate_id))
+            tx_slate_id=tx_slate_id)
+        logger.info(f"Epicbox slate canceled: "
+                    f"{cancel['status'] if 'status' in cancel else 'failed'}")
 
         return utils.response(SUCCESS, 'transaction canceled')
 
 
 @job('epicbox', redis_conn, timeout=30)
 def finalize_transaction(wallet_cfg: dict, state_id: str):
-    logger.info(f">> start working on task {get_current_job().id}")
+    logger.info(f">> start working on task finalize_transaction {get_current_job().id}")
 
     wallet = Wallet(**wallet_cfg)
     wallet.state = WalletState.objects.get(id=state_id)
@@ -185,7 +179,7 @@ def send_new_transaction(tx: dict, wallet_cfg: dict, connection: tuple, state_id
     this_task = get_current_job()
     wallet.state = WalletState.objects.get(id=state_id)
 
-    logger.info(f">> start working on task {this_task.id}")
+    logger.info(f">> start working on task send_new_transaction {this_task.id}")
 
     # """ GET OR WAIT FOR UNLOCKED INSTANCE """ #
     is_unlocked = get_wallet_status(wallet)
@@ -218,15 +212,11 @@ def send_new_transaction(tx: dict, wallet_cfg: dict, connection: tuple, state_id
 
         ## >> Create new Transaction object
         transaction = Transaction.objects.create(**tx_args)
-        response_, encrypted_slate = wallet.post_tx_slate(tx.receiver_address, init_tx_slate)
-
-        print(response_, encrypted_slate)
+        response_ = wallet.post_tx_slate(tx.receiver_address, init_tx_slate)
 
         if response_:
             # Update connection timestamps for time-lock function
             logger.info(update_connection_details(*connection))
-            transaction.encrypted_slate = json.loads(encrypted_slate)['str']
-            transaction.save()
             response = utils.response(SUCCESS, 'post tx success', {'tx_slate_id': transaction.tx_slate_id})
         else:
             response = utils.response(ERROR, f'post tx failed')

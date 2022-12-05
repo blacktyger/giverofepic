@@ -4,21 +4,67 @@ let addressIcon = $('.addressIcon')
 let address = $('#walletAddress')
 
 
-const spinnerHTMLsm = `<div class="spinner-grow spinner-grow-sm fs-6" role="status"></div>`
+const spinnerHTMLsm = `<div class="spinner-border spinner-border-sm fs-6" role="status"></div>`
 const spinnerHTML = `<div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>
                      <div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>
                      <div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>`
 
-// esZ7pubuHN4Dyn8WsCRjzhe12ZtgHqmnthGoopA1iSskm2xwXcKK
+
+// PROCESS USER REQUEST
+async function sendTransaction() {
+    let taskFinished = false
+    let amount = 0.01
+    let query = "api/initialize_transaction"
+    let body = {receiver_address: address.val(), amount: amount}
+
+    updateForm(spinnerHTML)
+    // transactionFailedAlert('dupa')
+    // listenForResponseAlert({})
+
+    let response = await fetch(query, {
+        method: 'POST',
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body),
+      }).then(checkStatus)
+        // .then(r => r)
+        .catch(err => console.log(err))
+
+    if (response) {
+        if (!response.error && 'result' in response) {
+            let taskId = response.result.task_id
+            let task = await getTaskStatus(taskId)
+
+            while (!taskFinished) {
+                if (task.status === 'finished') {
+                    taskFinished = true
+                    await finishedTaskHandler(task)
+                } else if (task.status === 'failed') {
+                    taskFinished = true
+                    transactionFailedAlert(task)
+                    console.log(task.status)
+                } else {
+                    console.log(task.status)
+                    await sleep(2000)
+                    task = await getTaskStatus(taskId)
+                }
+            }
+        } else {userRestrictedAlert(response.message)}
+    }
+    await resetForm()
+}
 
 
-function transactionFailedAlert(reason) {
+// RESTRICTED USER ALERT
+function userRestrictedAlert(result) {
         Swal.fire({
-        icon: 'warning',
-        title: `UNSUCCESSFUL`,
+        icon: 'info',
+        // title: `UNSUCCESSFUL`,
         html:`
-            ${reason}
-            <hr class="mt-4" />
+            ${result}
+            <hr class="mt-5" />
             <div class="my-2">
                 Need support? Join
                 <a href="https://t.me/GiverOfEpic" target="_blank" class="text-dark">
@@ -34,26 +80,28 @@ function transactionFailedAlert(reason) {
 }
 
 
-// SweetAlert2 instance spawned when first step of the transaction was successful
-// and script is waiting for receiving wallet to send response slate.
-function listenForResponseAlert(task) {
+async function listenForResponseAlert(task) {
+    // SweetAlert2 instance spawned when first step of the transaction was successful
+    // and script is waiting for receiving wallet to send response slate.
     let timerInterval
 
     Swal.fire({
         html:
             `<div class="card mt-1 bg-blue text-light">
-                 <div class="card-img"><img class="card-img" src="static/img/stack-wallet.png"></div>
+                 <div class="card-img">
+                    <img class="card-img" src="static/img/stack-wallet.png" alt="img">
+                 </div>
                  <div class="card-body">
                      Open your <b>Stack-Wallet</b> and confirm incoming transaction.
                      <a href="#" data-bs-toggle="tooltip" data-bs-title="
-                        Just open your wallet, it will be done automatically after full synchronization">
+                        It will be done automatically after full synchronization of the wallet">
                         <b><sup><i class="fa-solid fa-circle-info text-light"></i></sup></b>
                      </a>
                      <br><br>
                      <p>After <span><b>180</b></span> seconds transaction will be automatically canceled.</p>
                  </div>
                  <div class="card-footer mb-0 pb-0">
-                     <small class="text-dark"><pre>ID: ${task.result.result['tx_slate_id']}</pre></small>
+                     <small class="text-light-50"><pre>ID: ${task.result.result['tx_slate_id']}</pre></small>
                  </div>
              </div>`,
         timer: 1000*60*3,
@@ -77,23 +125,20 @@ function listenForResponseAlert(task) {
         },
         willClose: () => {clearInterval(timerInterval)}
 
-    }).then((aResult) => {
+    }).then(async (aResult) => {
         let tResult = task.result.result
-        console.log(aResult)
+        console.log(await aResult)
         console.log(tResult)
 
         // Closed by timer
-        // TODO: cancel transaction and remove slate
         if (aResult.dismiss === Swal.DismissReason.timer) {
-            console.log('tx slate id', tResult['tx_slate_id'])
-            cancelTransaction(tResult['tx_slate_id'])
+            console.log('Closed by timer')
+            await cancelTransaction(tResult['tx_slate_id'])
 
         // Canceled by user
-        // TODO: cancel transaction and remove slate
         } else if (aResult.dismiss === Swal.DismissReason.cancel) {
             console.log('Canceled by user')
-            console.log('tx slate id', tResult['tx_slate_id'])
-            cancelTransaction(tResult['tx_slate_id'])
+            await cancelTransaction(tResult['tx_slate_id'])
 
         // Confirmed by user
         // TODO: finalize_transaction
@@ -104,78 +149,38 @@ function listenForResponseAlert(task) {
 }
 
 
-async function sendTransaction() {
-    let taskFinished = false
-    let amount = 0.01
-    let query = "api/initialize_transaction"
-    let body = {receiver_address: address.val(), amount: amount}
-    confirmButton.attr('disabled', 'true')
-    confirmButton.html(spinnerHTML)
-
-    // transactionFailedAlert('dupa')
-    // listenForResponseAlert({})
-
-    let response = await fetch(query, {
-        method: 'POST',
-        headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body),
-      }).then(checkStatus)
-        .then(r => r)
-        .catch(err => console.log(err))
-
-    if (response) {
-        if (!response.error && 'result' in response) {
-            let taskId = response.result.task_id
-            let task = await getTaskStatus(taskId)
-
-            while (!taskFinished) {
-                if (task.status === 'finished') {
-                    console.log(task.status)
-                    taskFinished = true
-                    taskFeedback(task)
-                    confirmButton.html('CONFIRM')
-
-                } else if (task.status === 'failed') {
-                    console.log(task.status)
-                    taskFinished = true
-                    confirmButton.html('CONFIRM')
-                    console.log(task)
-                    transactionFailedAlert(task)
-
-                } else {
-                    await sleep(2000)
-                    task = await getTaskStatus(taskId)
-                    console.log(task.status)
-                }
-            }
-        } else {
-            taskFinished = true
-            feedbackField.html(response.message)
-        }
-    }
+// FAILED TRANSACTION ALERT
+function transactionFailedAlert(reason) {
+        Swal.fire({
+        icon: 'warning',
+        title: `UNSUCCESSFUL`,
+        html:`
+             ${reason}
+             <hr class="mt-4" />
+             <div class="my-2">
+                 Need support? Join
+                 <a href="https://t.me/GiverOfEpic" target="_blank" class="text-dark">
+                     <i class="fa-brands fa-telegram ms-1"></i> <b>GiverOfEpic</b>. 
+                 </a>
+             </div>
+             <hr class="mb-2" />
+             `,
+        position: 'center',
+        showConfirmButton: true,
+        confirmButtonText: `<i class="fa fa-check"></i> CONFIRM`,
+    }).then((result) => {console.log('alert result:', result)})
 }
 
 
 // HANDLE FINISHED TASK
-function taskFeedback(task) {
+async function finishedTaskHandler(task) {
     console.log(task.result);
-
     if (!task.result) {
         console.log('error: task finished but no results');
-        return
-    }
-
-    if (task.result.error) {
-        let addr = address.val()
-        address.attr('disabled', 'true').val('')
-        address.attr('placeholder', addr)
-        addressIcon.css('color', 'grey');
+    }else if (task.result.error) {
         transactionFailedAlert(task.result.message)
     } else {
-        listenForResponseAlert(task)
+        await listenForResponseAlert(task)
     }
 }
 
@@ -195,7 +200,7 @@ async function getTaskStatus(taskId) {
 }
 
 
-// CANCEL TRANSACTION / DELETE SLATE
+// CANCEL TRANSACTION
 function cancelTransaction(tx_slate_id) {
     let query = `/api/cancel_transaction/tx_slate_id=${tx_slate_id}`
 
@@ -218,6 +223,25 @@ checkStatus = async (response) => {
     feedbackField.text(response.status)
 }
 
+
+// UPDATE ADDRESS INPUT AND CONFIRM BUTTON STATE
+function updateForm(conf_btn_html) {
+    confirmButton.attr('disabled', true)
+    confirmButton.html(conf_btn_html)
+    addressIcon.css('color', 'grey');
+    address.attr('disabled', true)
+}
+
+
+// RESET ADDRESS INPUT AND CONFIRM BUTTON STATE
+async function resetForm() {
+    confirmButton.html('CONFIRM')
+    confirmButton.timedDisable(5);
+    await sleep(5000)
+    confirmButton.attr('disabled', false);
+    addressIcon.css('color', 'green');
+    address.attr('disabled', false);
+}
 
 function toast(text='', icon='info', timer=3000, timerProgressBar=false) {
     const Toast = Swal.mixin({
@@ -256,3 +280,29 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+
+$.fn.timedDisable = function(time) {
+  if (time == null) {
+    time = 5;
+  }
+  var seconds = Math.ceil(time); // Calculate the number of seconds
+  return $(this).each(function() {
+    var disabledElem = $(this);
+    const originalText = this.innerHTML; // Remember the original text content
+
+    // append the number of seconds to the text
+    disabledElem.text(originalText + ' (' + seconds + ')');
+
+    // do a set interval, using an interval of 1000 milliseconds
+    //     and clear it after the number of seconds counts down to 0
+    var interval = setInterval(function() {
+        seconds = seconds - 1;
+      // decrement the seconds and update the text
+      disabledElem.text(originalText + ' (' + seconds + ')');
+      if (seconds === 0) { // once seconds is 0...
+          disabledElem.text(originalText); //reset to original text
+        clearInterval(interval); // clear interval
+      }
+    }, 1000);
+  });
+};

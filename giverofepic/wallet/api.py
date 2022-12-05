@@ -21,10 +21,8 @@ Initialize Server Wallet - Epic-Box Sender I,
 - executing outgoing transactions.
 """
 NAME = "epic_box_1"
-
 wallet = Wallet(wallet_dir=secrets.WALLET_DIR, password=secrets.WALLET_PASSWORD)
 wallet.state, _ = WalletState.objects.get_or_create(name=NAME)
-logger.info(wallet.state.is_locked)
 
 """Initialize Redis and Queue for managing task"""
 redis_conn = django_rq.get_connection('default')

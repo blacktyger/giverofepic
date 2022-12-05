@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from django.utils import timezone
 from ipware import get_client_ip
 from django.db import models
+import humanfriendly
 
 from wallet.epic_sdk import utils
 from wallet.const_values import *
@@ -48,14 +49,15 @@ class Address(models.Model):
     last_activity = models.DateTimeField(auto_now_add=True)
     last_success_tx = models.DateTimeField(null=True, blank=True)
 
-    def locked_until(self):
+    def locked_for(self):
         if not self.last_success_tx or not self.is_locked:
             return 0
         else:
-            return self.last_success_tx + timedelta(minutes=1)
+            return self.last_success_tx + timedelta(minutes=1) - timezone.now()
 
     def locked_msg(self):
-        return f'Wallet address is locked until {self.locked_until()}'
+        return f'You have reached your limit, try again in ' \
+               f'<b>{humanfriendly.format_timespan(self.locked_for().seconds)}</b>.'
 
     def is_now_locked(self):
         if not self.last_success_tx:
