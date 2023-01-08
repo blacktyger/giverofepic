@@ -6,7 +6,7 @@ import django
 import json
 import os
 
-# Must be called before imports from Django components.
+# Must be called before imports from Django components
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "giverofepic.settings")
 django.setup()
 
@@ -56,7 +56,7 @@ def cancel_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
 
 
 @job('epicbox', redis_conn, timeout=30)
-def finalize_transaction(wallet_cfg: dict, state_id: str):
+def finalize_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
     logger.info(f">> start working on task finalize_transaction {get_current_job().id}")
 
     wallet = Wallet(**wallet_cfg)
@@ -66,9 +66,11 @@ def finalize_transaction(wallet_cfg: dict, state_id: str):
     is_unlocked = get_wallet_status(wallet)
     if is_unlocked['error']: return is_unlocked
 
+    # TODO: Uncomment for production
     # wallet.state.lock()  # Lock the wallet instance
 
     # DEFINE FUNCTION VARIABLES
+    is_requested_tx = False
     to_process = []
     processed = []
     to_post = []
@@ -85,13 +87,21 @@ def finalize_transaction(wallet_cfg: dict, state_id: str):
     # LIST OF TX_IDs FROM WALLET INSTANCE DB
     txs_ids = [str(tx.tx_slate_id) for tx in txs]
 
+    # CONFIRM tx_slate_id BELONGS TO THIS WALLET AND IT IS NOT FINISHED ALREADY
+    if tx_slate_id not in txs_ids:
+        return utils.response(ERROR, "Transaction not found in the server wallet.")
+
     # Filter new slates and append to list
     logger.info(f">> Start decrypting {len(encrypted_slates)} slates")
+
     for encrypted_string in encrypted_slates:
         decrypted_slate = wallet.decrypt_tx_slates([encrypted_string])[0]
         slate_string, address = decrypted_slate
         db_tx, network_slate = json.loads(slate_string)
         incoming_slate_tx_id = json.loads(db_tx)[0]['tx_slate_id']
+
+        # Confirm that requested transaction id is received
+        if incoming_slate_tx_id in tx_slate_id: is_requested_tx = True
 
         # Iterate through slates associated with this wallet instance,
         # either 'init_tx_slate' or 'response_tx_slate', this wallet as sender
@@ -154,6 +164,7 @@ def finalize_transaction(wallet_cfg: dict, state_id: str):
             logger.info(f">> {ready_tx} failed to post, ")
 
     report = {
+        "is_requested_tx": is_requested_tx,
         "slates_received": len(encrypted_slates),
         "slates_decrypted": len(to_process),
         "slates_processed": len(to_post),
@@ -189,6 +200,7 @@ def send_new_transaction(tx: dict, wallet_cfg: dict, connection: tuple, state_id
         this_task.save_meta()
         return is_unlocked
 
+    # TODO: Uncomment for production
     # wallet.state.lock()  # Lock the wallet instance
 
     # """ MAKE SURE WALLET BALANCE IS SUFFICIENT """ #

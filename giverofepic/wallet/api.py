@@ -24,11 +24,13 @@ NAME = "epic_box_1"
 wallet = Wallet(wallet_dir=secrets.WALLET_DIR, password=secrets.WALLET_PASSWORD)
 wallet.state, _ = WalletState.objects.get_or_create(name=NAME)
 
+
 """Initialize Redis and Queue for managing task"""
 redis_conn = django_rq.get_connection('default')
 queue = Queue('epicbox', default_timeout=800, connection=redis_conn)
 
 
+"""API ENDPOINTS"""
 @api.post("/initialize_transaction")
 def initialize_transaction(request, tx: TransactionSchema):
     """
@@ -36,8 +38,6 @@ def initialize_transaction(request, tx: TransactionSchema):
     :param request: request object
     :param tx: transaction args (amount and address)
     :return: JSON response
-
-    esZ7pubuHN4Dyn8WsCRjzhe12ZtgHqmnthGoopA1iSskm2xwXcKK
     """
     try:
         # """ VALIDATE TX_ARGS BEFORE START """ #
@@ -62,6 +62,54 @@ def initialize_transaction(request, tx: TransactionSchema):
         return utils.response(ERROR, f'send task failed, {str(e)}')
 
 
+@api.get("/finalize_transaction/tx_slate_id={tx_slate_id}")
+def finalize_transaction(request, tx_slate_id: str):
+    """
+    API-ENDPOINT accessible for client to initialize finalization of the transaction.
+    :param tx_slate_id:
+    :param request:
+    :return:
+    """
+    try:
+        task = tasks.finalize_transaction.delay(
+                wallet_cfg=wallet.config.essential(),
+                state_id=wallet.state.id,
+                tx_slate_id=tx_slate_id)
+
+        result = Job.fetch(id=task.id, connection=redis_conn)
+        print(f"\n{result.return_value}\n")
+
+        return utils.response(
+            SUCCESS,
+            'task enqueued', {
+                'task_id': task.id,
+                'queue_len': queue.count,
+                'report': str(result)
+                })
+    except Exception as e:
+        return utils.response(ERROR, 'finalize_transaction task failed', str(e))
+
+
+@api.get("/cancel_transaction/tx_slate_id={tx_slate_id}")
+def cancel_transaction(request, tx_slate_id: str):
+    """
+    :param request:
+    :param tx_slate_id:
+    :return:
+    """
+    print(tx_slate_id)
+
+    try:
+        task = tasks.cancel_transaction.delay(
+                wallet_cfg=wallet.config.essential(),
+                state_id=wallet.state.id,
+                tx_slate_id=tx_slate_id)
+        return utils.response(SUCCESS, 'task enqueued', {'task_id': task.id, 'queue_len': queue.count})
+
+    except Exception as e:
+        return utils.response(ERROR, 'cancel_transaction task failed', {str(e)})
+
+
 @api.get('/get_task/id={task_id}')
 async def get_task(request, task_id: str):
     """
@@ -76,38 +124,6 @@ async def get_task(request, task_id: str):
         return {'status': task.get_status(), 'message': message, 'result': task.result}
     except Exception as e:
         return utils.response(ERROR, f'Task not found: {task_id} \n {str(e)}')
-
-
-@api.get("/finalize_transaction")
-def finalize_transaction(request):
-    """
-    API-ENDPOINT accessible for client to initialize finalization of the transaction.
-    :param request:
-    :return:
-    """
-    try:
-        task = tasks.finalize_transaction.delay(
-                wallet_cfg=wallet.config.essential(),
-                state_id=wallet.state.id)
-        return utils.response(SUCCESS, 'task enqueued', {'task_id': task.id, 'queue_len': queue.count})
-
-    except Exception as e:
-        return utils.response(ERROR, 'finalize_transaction task failed', {str(e)})
-
-
-@api.get("/cancel_transaction/tx_slate_id={tx_slate_id}")
-def cancel_transaction(request, tx_slate_id: str):
-    print(tx_slate_id)
-
-    try:
-        task = tasks.cancel_transaction.delay(
-                wallet_cfg=wallet.config.essential(),
-                state_id=wallet.state.id,
-                tx_slate_id=tx_slate_id)
-        return utils.response(SUCCESS, 'task enqueued', {'task_id': task.id, 'queue_len': queue.count})
-
-    except Exception as e:
-        return utils.response(ERROR, 'cancel_transaction task failed', {str(e)})
 
 
 @api.get("/validate_address/address={address}")

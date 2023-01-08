@@ -92,7 +92,7 @@ async function listenForResponseAlert(task) {
                     <img class="card-img" src="static/img/stack-wallet.png" alt="img">
                  </div>
                  <div class="card-body">
-                     Open your <b>Stack-Wallet</b> and confirm incoming transaction.
+                     Open your Wallet and confirm incoming transaction.
                      <a href="#" data-bs-toggle="tooltip" data-bs-title="
                         It will be done automatically after full synchronization of the wallet">
                         <b><sup><i class="fa-solid fa-circle-info text-light"></i></sup></b>
@@ -143,11 +143,18 @@ async function listenForResponseAlert(task) {
         // Confirmed by user
         // TODO: finalize_transaction
         } else if (aResult.isConfirmed) {
-           console.log('Confirmed by user')
+            console.log('Confirmed by user')
+            let result = await finalizeTransaction(tResult['tx_slate_id'])
+            console.log(result)
         }
     })
 }
 
+
+// FAILED TRANSACTION ALERT
+function transactionConfirmedAlert(reason) {
+
+}
 
 // FAILED TRANSACTION ALERT
 function transactionFailedAlert(reason) {
@@ -190,6 +197,21 @@ async function getTaskStatus(taskId) {
     let query = `/api/get_task/id=${taskId}`
 
     return await fetch(query, {
+        method: 'GET',
+        headers: {
+            'Accept': '*/*',
+            'Content-Type': 'application/json'
+        }
+    }).then(response => response.json())
+      .catch(err => {console.log(err)})
+}
+
+
+// FINALIZE TRANSACTION (SUCCESS)
+function finalizeTransaction(tx_slate_id) {
+    let query = `/api/finalize_transaction/tx_slate_id=${tx_slate_id}`
+
+    return fetch(query, {
         method: 'GET',
         headers: {
             'Accept': '*/*',
@@ -270,11 +292,12 @@ Number.prototype.round = function(places) {
 $(document).ready(function(){
     getToolTips()
 });
-
 function getToolTips() {
     const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
     const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
 }
+
+
 // SLEEP/WAIT FUNCTION
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -282,27 +305,26 @@ function sleep(ms) {
 
 
 $.fn.timedDisable = function(time) {
-  if (time == null) {
-    time = 5;
-  }
-  var seconds = Math.ceil(time); // Calculate the number of seconds
-  return $(this).each(function() {
-    var disabledElem = $(this);
-    const originalText = this.innerHTML; // Remember the original text content
+    if (time == null) {time = 5}
+    let seconds = Math.ceil(time); // Calculate the number of seconds
+
+    return $(this).each(function() {
+      const disabledElem = $(this);
+      const originalText = this.innerHTML; // Remember the original text content
 
     // append the number of seconds to the text
     disabledElem.text(originalText + ' (' + seconds + ')');
 
     // do a set interval, using an interval of 1000 milliseconds
     //     and clear it after the number of seconds counts down to 0
-    var interval = setInterval(function() {
-        seconds = seconds - 1;
-      // decrement the seconds and update the text
-      disabledElem.text(originalText + ' (' + seconds + ')');
-      if (seconds === 0) { // once seconds is 0...
-          disabledElem.text(originalText); //reset to original text
-        clearInterval(interval); // clear interval
-      }
-    }, 1000);
-  });
+      const interval = setInterval(function () {
+          seconds = seconds - 1;
+          // decrement the seconds and update the text
+          disabledElem.text(originalText + ' (' + seconds + ')');
+          if (seconds === 0) { // once seconds is 0...
+              disabledElem.text(originalText); //reset to original text
+              clearInterval(interval); // clear interval
+          }
+      }, 1000);
+    });
 };
