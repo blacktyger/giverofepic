@@ -76,16 +76,8 @@ def finalize_transaction(request, tx_slate_id: str):
                 state_id=wallet.state.id,
                 tx_slate_id=tx_slate_id)
 
-        result = Job.fetch(id=task.id, connection=redis_conn)
-        print(f"\n{result.return_value}\n")
-
-        return utils.response(
-            SUCCESS,
-            'task enqueued', {
-                'task_id': task.id,
-                'queue_len': queue.count,
-                'report': str(result)
-                })
+        return utils.response(SUCCESS, 'task enqueued',
+                              {'task_id': task.id, 'queue_len': queue.count})
     except Exception as e:
         return utils.response(ERROR, 'finalize_transaction task failed', str(e))
 

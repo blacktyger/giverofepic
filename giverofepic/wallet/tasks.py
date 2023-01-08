@@ -1,4 +1,4 @@
-from rq import get_current_job
+from rq import get_current_job, Retry
 from django.db.models import Q
 from rq.decorators import job
 import django_rq
@@ -55,7 +55,7 @@ def cancel_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
         return utils.response(SUCCESS, 'transaction canceled')
 
 
-@job('epicbox', redis_conn, timeout=30)
+@job('epicbox', redis_conn, timeout=30, retry=Retry(max=3, interval=5))
 def finalize_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
     logger.info(f">> start working on task finalize_transaction {get_current_job().id}")
 
@@ -140,7 +140,8 @@ def finalize_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
 
     if not processed:
         wallet.state.unlock()  # Release the wallet
-        return utils.response(ERROR, "No slates processed")
+        raise Exception('requested tx not found, re-try')
+        # return utils.response(ERROR, "No slates processed")
 
     for tx_ in Transaction.objects.filter(status='initialized', archived=False):
         tx_.status = 'finalized'
@@ -172,8 +173,8 @@ def finalize_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
         }
 
     wallet.state.unlock()  # Release the wallet instance
-
-    return utils.response(SUCCESS, 'success', report)
+    message = f'confirmed tx requested by user: {is_requested_tx}'
+    return utils.response(SUCCESS, message, report)
 
 
 @job('epicbox', redis_conn, timeout=30)

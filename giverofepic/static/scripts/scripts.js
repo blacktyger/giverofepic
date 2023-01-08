@@ -40,7 +40,7 @@ async function sendTransaction() {
             while (!taskFinished) {
                 if (task.status === 'finished') {
                     taskFinished = true
-                    await finishedTaskHandler(task)
+                    await finishedTaskHandler(task, 'sent')
                 } else if (task.status === 'failed') {
                     taskFinished = true
                     transactionFailedAlert(task)
@@ -143,18 +143,43 @@ async function listenForResponseAlert(task) {
         // Confirmed by user
         // TODO: finalize_transaction
         } else if (aResult.isConfirmed) {
+            let taskFinished = false
             console.log('Confirmed by user')
             let result = await finalizeTransaction(tResult['tx_slate_id'])
             console.log(result)
+            let task = await getTaskStatus(result.result['task_id'])
+            console.log(task)
+
+            while (!taskFinished) {
+                if (task.status === 'finished') {
+                    taskFinished = true
+                    await finishedTaskHandler(task, 'confirmed')
+                } else if (task.status === 'failed') {
+                    taskFinished = true
+                    console.log('failed' + task)
+                } else {
+                    console.log(task.status)
+                    await sleep(2000)
+                    task = await getTaskStatus(result.result['task_id'])
+                }
+            }
         }
     })
 }
 
 
-// FAILED TRANSACTION ALERT
-function transactionConfirmedAlert(reason) {
-
+// CONFIRMED TRANSACTION ALERT
+function transactionConfirmedAlert() {
+    Swal.fire({
+        icon: 'success',
+        title: `Transaction confirmed!`,
+        html:``,
+        position: 'center',
+        showConfirmButton: true,
+        confirmButtonText: `<i class="fa fa-check"></i> OK`,
+    }).then((result) => {console.log('alert result:', result)})
 }
+
 
 // FAILED TRANSACTION ALERT
 function transactionFailedAlert(reason) {
@@ -180,14 +205,22 @@ function transactionFailedAlert(reason) {
 
 
 // HANDLE FINISHED TASK
-async function finishedTaskHandler(task) {
+async function finishedTaskHandler(task, type) {
     console.log(task.result);
     if (!task.result) {
         console.log('error: task finished but no results');
-    }else if (task.result.error) {
-        transactionFailedAlert(task.result.message)
+    } else if (task.result.error) {
+        if (type === 'confirmed') {
+            transactionFailedAlert(task.result.message)
+        } else if (type === 'sent') {
+            transactionFailedAlert(task.result.message)
+        }
     } else {
-        await listenForResponseAlert(task)
+        if (type === 'confirmed') {
+            transactionConfirmedAlert()
+        } else if (type === 'sent') {
+            await listenForResponseAlert(task)
+        }
     }
 }
 
@@ -207,7 +240,7 @@ async function getTaskStatus(taskId) {
 }
 
 
-// FINALIZE TRANSACTION (SUCCESS)
+// FINALIZE TRANSACTION
 function finalizeTransaction(tx_slate_id) {
     let query = `/api/finalize_transaction/tx_slate_id=${tx_slate_id}`
 
