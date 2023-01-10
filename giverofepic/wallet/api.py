@@ -45,34 +45,35 @@ def initialize_transaction(request, tx: TransactionSchema):
         if tx_args['error']: return tx_args
 
         # """ AUTHORIZE CONNECTION WITH TIME-LOCK FUNCTION """ #
-        ip, address = connection_details(request, tx)
-        authorized = connection_authorized(ip, address, tx)
+        ip, address = connection_details(request, tx.receiver_address)
+        authorized = connection_authorized(ip, address)
         if authorized['error']: return authorized
 
         # """ PREPARE TASK TO ENQUEUE """ #
         task = tasks.send_new_transaction.delay(
                 wallet_cfg=wallet.config.essential(),
-                connection=(ip.address, address.address),
-                state_id=wallet.state.id,
-                tx=tx.dict()
-                )
+                state_id=wallet.state.id, tx=tx.dict())
+
         return utils.response(SUCCESS, 'task enqueued', {'task_id': task.id, 'queue_len': queue.count})
 
     except Exception as e:
         return utils.response(ERROR, f'send task failed, {str(e)}')
 
 
-@api.get("/finalize_transaction/tx_slate_id={tx_slate_id}")
-def finalize_transaction(request, tx_slate_id: str):
+@api.get("/finalize_transaction/tx_slate_id={tx_slate_id}&address={address}")
+def finalize_transaction(request, tx_slate_id: str, address: str):
     """
     API-ENDPOINT accessible for client to initialize finalization of the transaction.
+    :param address:
     :param tx_slate_id:
     :param request:
     :return:
     """
     try:
+        ip, addr = connection_details(request, address)
         task = tasks.finalize_transaction.delay(
                 wallet_cfg=wallet.config.essential(),
+                connection=(ip.address, addr.address),
                 state_id=wallet.state.id,
                 tx_slate_id=tx_slate_id)
 
@@ -82,20 +83,26 @@ def finalize_transaction(request, tx_slate_id: str):
         return utils.response(ERROR, 'finalize_transaction task failed', str(e))
 
 
-@api.get("/cancel_transaction/tx_slate_id={tx_slate_id}")
-def cancel_transaction(request, tx_slate_id: str):
+@api.get("/cancel_transaction/tx_slate_id={tx_slate_id}&address={address}")
+def cancel_transaction(request, tx_slate_id: str, address: str):
     """
+    :param address:
     :param request:
     :param tx_slate_id:
     :return:
     """
     print(tx_slate_id)
-
+    ip, addr = connection_details(request, address)
     try:
         task = tasks.cancel_transaction.delay(
                 wallet_cfg=wallet.config.essential(),
                 state_id=wallet.state.id,
                 tx_slate_id=tx_slate_id)
+
+        # Update receiver lock status in database
+        print(ip.is_now_locked())
+        print(addr.is_now_locked())
+
         return utils.response(SUCCESS, 'task enqueued', {'task_id': task.id, 'queue_len': queue.count})
 
     except Exception as e:

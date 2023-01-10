@@ -3,7 +3,6 @@ let confirmButton = $('#confirmButton')
 let addressIcon = $('.addressIcon')
 let address = $('#walletAddress')
 
-
 const spinnerHTMLsm = `<div class="spinner-border spinner-border-sm fs-6" role="status"></div>`
 const spinnerHTML = `<div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>
                      <div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>
@@ -18,8 +17,7 @@ async function sendTransaction() {
     let body = {receiver_address: address.val(), amount: amount}
 
     updateForm(spinnerHTML)
-    // transactionFailedAlert('dupa')
-    // listenForResponseAlert({})
+    feedbackField.text('Connecting to the server..')
 
     let response = await fetch(query, {
         method: 'POST',
@@ -34,26 +32,43 @@ async function sendTransaction() {
 
     if (response) {
         if (!response.error && 'result' in response) {
+            feedbackField.text('Preparing wallet..')
+
             let taskId = response.result.task_id
             let task = await getTaskStatus(taskId)
 
             while (!taskFinished) {
                 if (task.status === 'finished') {
+                    feedbackField.text('')
                     taskFinished = true
                     await finishedTaskHandler(task, 'sent')
+
                 } else if (task.status === 'failed') {
+                    feedbackField.text('')
                     taskFinished = true
                     transactionFailedAlert(task)
                     console.log(task.status)
-                } else {
+
+                } else if (task.status === 'queued') {
                     console.log(task.status)
                     await sleep(2000)
+                    feedbackField.text('Preparing wallet..')
+                    task = await getTaskStatus(taskId)
+
+                } else if (task.status === 'started') {
+                    console.log(task.status)
+                    await sleep(2000)
+                    feedbackField.text('Preparing transaction..')
                     task = await getTaskStatus(taskId)
                 }
             }
-        } else {userRestrictedAlert(response.message)}
+        } else {
+            userRestrictedAlert(response.message)
+            feedbackField.text('')
+            await resetForm()
+        }
     }
-    await resetForm()
+    feedbackField.text('')
 }
 
 
@@ -72,7 +87,7 @@ function userRestrictedAlert(result) {
                 </a>
             </div>
             <hr class="mb-2" />
-             `,
+            `,
         position: 'center',
         showConfirmButton: true,
         confirmButtonText: `<i class="fa fa-check"></i> CONFIRM`,
@@ -80,7 +95,7 @@ function userRestrictedAlert(result) {
 }
 
 
-async function listenForResponseAlert(task) {
+async function transactionInitializedAlert(task) {
     // SweetAlert2 instance spawned when first step of the transaction was successful
     // and script is waiting for receiving wallet to send response slate.
     let timerInterval
@@ -92,13 +107,13 @@ async function listenForResponseAlert(task) {
                     <img class="card-img" src="static/img/stack-wallet.png" alt="img">
                  </div>
                  <div class="card-body">
-                     Open your Wallet and confirm incoming transaction.
+                     Open or refresh your wallet and confirm incoming transaction.
                      <a href="#" data-bs-toggle="tooltip" data-bs-title="
-                        It will be done automatically after full synchronization of the wallet">
+                        It will be done automatically after full synchronization of the wallet, you may need to refresh the history.">
                         <b><sup><i class="fa-solid fa-circle-info text-light"></i></sup></b>
                      </a>
                      <br><br>
-                     <p>After <span><b>180</b></span> seconds transaction will be automatically canceled.</p>
+                     <p>After <span><b>180</b></span> seconds transaction will be automatically cancelled.</p>
                  </div>
                  <div class="card-footer mb-0 pb-0">
                      <small class="text-light-50"><pre>ID: ${task.result.result['tx_slate_id']}</pre></small>
@@ -116,7 +131,6 @@ async function listenForResponseAlert(task) {
         confirmButtonColor: 'green',
 
         didOpen: () => {
-            // Swal.showLoading()
             getToolTips()
             const b = Swal.getHtmlContainer().querySelector('span').querySelector('b')
             timerInterval = setInterval(() => {
@@ -129,20 +143,26 @@ async function listenForResponseAlert(task) {
         let tResult = task.result.result
         console.log(await aResult)
         console.log(tResult)
+        updateForm(spinnerHTMLsm)
 
         // Closed by timer
         if (aResult.dismiss === Swal.DismissReason.timer) {
             console.log('Closed by timer')
             await cancelTransaction(tResult['tx_slate_id'])
+            await spawnToast('error', 'Transaction time expired')
 
         // Canceled by user
         } else if (aResult.dismiss === Swal.DismissReason.cancel) {
             console.log('Canceled by user')
             await cancelTransaction(tResult['tx_slate_id'])
+            await spawnToast('warning', 'Transaction cancelled by user.')
+            await resetForm()
 
         // Confirmed by user
-        // TODO: finalize_transaction
         } else if (aResult.isConfirmed) {
+            updateForm(spinnerHTML)
+            feedbackField.text('Waiting for response..')
+
             let taskFinished = false
             console.log('Confirmed by user')
             let result = await finalizeTransaction(tResult['tx_slate_id'])
@@ -152,11 +172,15 @@ async function listenForResponseAlert(task) {
 
             while (!taskFinished) {
                 if (task.status === 'finished') {
+                    feedbackField.text('')
                     taskFinished = true
                     await finishedTaskHandler(task, 'confirmed')
                 } else if (task.status === 'failed') {
+                    feedbackField.text('')
                     taskFinished = true
-                    console.log('failed' + task)
+                    console.log('failed' + task.result)
+                    await cancelTransaction(tResult['tx_slate_id'])
+                    transactionFailedAlert("Receiver wallet was offline, transaction is cancelled.")
                 } else {
                     console.log(task.status)
                     await sleep(2000)
@@ -173,11 +197,14 @@ function transactionConfirmedAlert() {
     Swal.fire({
         icon: 'success',
         title: `Transaction confirmed!`,
-        html:``,
+        html:`Your EPIC will be spendable after <b>1 confirmation</b>, on average ~<b>1 minute</b>.`,
         position: 'center',
         showConfirmButton: true,
         confirmButtonText: `<i class="fa fa-check"></i> OK`,
-    }).then((result) => {console.log('alert result:', result)})
+    }).then(async (result) => {
+        await resetForm()
+        console.log('alert result:', result)
+    })
 }
 
 
@@ -200,7 +227,10 @@ function transactionFailedAlert(reason) {
         position: 'center',
         showConfirmButton: true,
         confirmButtonText: `<i class="fa fa-check"></i> CONFIRM`,
-    }).then((result) => {console.log('alert result:', result)})
+    }).then(async (result) => {
+        await resetForm()
+        console.log('alert result:', result)
+    })
 }
 
 
@@ -211,17 +241,37 @@ async function finishedTaskHandler(task, type) {
         console.log('error: task finished but no results');
     } else if (task.result.error) {
         if (type === 'confirmed') {
-            transactionFailedAlert(task.result.message)
+            await transactionFailedAlert(task.result.message)
         } else if (type === 'sent') {
-            transactionFailedAlert(task.result.message)
+            await transactionFailedAlert(task.result.message)
         }
     } else {
         if (type === 'confirmed') {
-            transactionConfirmedAlert()
+            await transactionConfirmedAlert()
         } else if (type === 'sent') {
-            await listenForResponseAlert(task)
+            await transactionInitializedAlert(task)
         }
     }
+}
+
+
+// SPAWN TOAST NOTIFICATION
+async function spawnToast(icon, title) {
+    const Toast = Swal.mixin({
+        toast: true,
+        position: 'top',
+        iconColor: 'white',
+        customClass: {
+            popup: 'colored-toast'
+        },
+        showConfirmButton: false,
+        timer: 2500,
+        timerProgressBar: true
+    })
+    await Toast.fire({
+        icon: icon,
+        title: title,
+    })
 }
 
 
@@ -242,7 +292,7 @@ async function getTaskStatus(taskId) {
 
 // FINALIZE TRANSACTION
 function finalizeTransaction(tx_slate_id) {
-    let query = `/api/finalize_transaction/tx_slate_id=${tx_slate_id}`
+    let query = `/api/finalize_transaction/tx_slate_id=${tx_slate_id}&address=${address.val()}`
 
     return fetch(query, {
         method: 'GET',
@@ -257,7 +307,7 @@ function finalizeTransaction(tx_slate_id) {
 
 // CANCEL TRANSACTION
 function cancelTransaction(tx_slate_id) {
-    let query = `/api/cancel_transaction/tx_slate_id=${tx_slate_id}`
+    let query = `/api/cancel_transaction/tx_slate_id=${tx_slate_id}&address=${address.val()}`
 
     return fetch(query, {
         method: 'GET',
@@ -274,7 +324,6 @@ function cancelTransaction(tx_slate_id) {
 checkStatus = async (response) => {
     if (response.status >= 200 && response.status < 300)
         return await response.json()
-
     feedbackField.text(response.status)
 }
 

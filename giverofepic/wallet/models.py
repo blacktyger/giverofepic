@@ -149,8 +149,8 @@ class Transaction(models.Model):
         return f"Transaction(tx_status={self.status}, tx_slate_id={self.tx_slate_id})"
 
 
-def connection_details(request, tx, update: bool = False):
-    address, created = ReceiverAddr.objects.get_or_create(address=tx.receiver_address)
+def connection_details(request, addr, update: bool = False):
+    address, created = ReceiverAddr.objects.get_or_create(address=addr)
     address.last_activity = timezone.now()
 
     ip, is_routable = get_client_ip(request)
@@ -175,7 +175,7 @@ def update_connection_details(ip, address):
 
     return ip, address
 
-def connection_authorized(ip, address, tx):
+def connection_authorized(ip, address):
     if ip.is_now_locked():
         return utils.response(ERROR, ip.locked_msg())
 
