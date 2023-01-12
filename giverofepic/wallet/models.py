@@ -10,21 +10,16 @@ from ipware import get_client_ip
 from django.db import models
 import humanfriendly
 
+from giverofepic.secrets import WALLET_DIR
 from wallet.epic_sdk import utils
 from wallet.const_values import *
-
-
-if 'windows' in platform.system().lower():
-    default_path = r"C:\Users\%USERPROFILE%\.epic\main"
-else:
-    default_path = r"~\.epic\main"
 
 
 class WalletState(models.Model):
     id = models.UUIDField(primary_key=True, unique=True, default=uuid.uuid4)
     name = models.CharField(max_length=128, default='epic_wallet')
     is_locked = models.BooleanField(default=False)
-    wallet_dir = models.CharField(max_length=128, default=default_path)
+    wallet_dir = models.CharField(max_length=128, default=WALLET_DIR)
 
     def lock(self):
         self.is_locked = True
