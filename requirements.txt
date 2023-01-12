@@ -29,3 +29,5 @@ coincurve
 pycryptodome
 psutil
 django-ipware
+django-rq
+humanfriendly

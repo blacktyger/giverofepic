@@ -2,8 +2,15 @@
 /giverofepic/giverofepic/__pycache__/
 /giverofepic/wallet/__pycache__/
 /giverofepic/wallet/epic-sdk/
-giverofepic/wallet/migrations/__pycache__/
-giverofepic/wallet/migrations/
+/giverofepic/wallet/migrations/__pycache__/
+/giverofepic/wallet/migrations/
+
+/giverofepic/giverofepic/secrets.py
+/giverofepic/secrets.py
+
+giverofepic/website/migrations/
+giverofepic/website/migrations/__pycache__/
+
 /build/
 /setup.py
 /Pipfile.lock
@@ -14,3 +21,4 @@ giverofepic/db.sqlite3
 */*/__pycache__/
 */*/*/__pycache__/
 /giverofepic/wallet/migrations/
+/dev_notes.md
