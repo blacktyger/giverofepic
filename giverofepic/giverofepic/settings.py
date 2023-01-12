@@ -127,7 +127,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 if os.getenv('DJANGO_DEVELOPMENT') == 'true':
-    DEBUG = False
+    # DEBUG = False
 
     RQ_QUEUES = {
         'default': {
