@@ -15,15 +15,17 @@ from .schema import TransactionSchema
 api = NinjaAPI()
 logger = get_logger()
 
-
-"""
-Initialize Server Wallet - Epic-Box Sender I, 
-- executing outgoing transactions.
-"""
-NAME = "epic_box_1"
-wallet = Wallet(wallet_dir=secrets.WALLET_DIR, password=secrets.WALLET_PASSWORD)
-wallet.state, _ = WalletState.objects.get_or_create(name=NAME)
-
+try:
+    """
+    Initialize Server Wallet - Epic-Box Sender I, 
+    - executing outgoing transactions.
+    """
+    NAME = "epic_box_1"
+    wallet = Wallet(wallet_dir=secrets.WALLET_DIR, password=secrets.WALLET_PASSWORD)
+    wallet.state, _ = WalletState.objects.get_or_create(name=NAME)
+except Exception:
+    print(f"No database created yet, skipping initializing wallet")
+    pass
 
 """Initialize Redis and Queue for managing task"""
 redis_conn = django_rq.get_connection('default')
