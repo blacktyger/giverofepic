@@ -36,7 +36,7 @@ INSTALLED_APPS = [
 RQ_QUEUES = {
     'default': {
         'HOST': '209.127.179.199',
-        'PORT': 6379,
+        'PORT': 6380,
         'DB': 0,
         'DEFAULT_TIMEOUT': 360,
         },

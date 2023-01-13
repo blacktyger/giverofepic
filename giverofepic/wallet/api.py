@@ -1,3 +1,4 @@
+import passpy as passpy
 from ninja import NinjaAPI
 from rq.job import Job
 from rq import Queue
@@ -14,6 +15,8 @@ from .schema import TransactionSchema
 
 api = NinjaAPI()
 logger = get_logger()
+PASS_PATH = 'Wallet/password'
+
 
 try:
     """
@@ -21,7 +24,7 @@ try:
     - executing outgoing transactions.
     """
     NAME = "epic_box_1"
-    wallet = Wallet(wallet_dir=secrets.WALLET_DIR, password=secrets.WALLET_PASSWORD)
+    wallet = Wallet(wallet_dir=secrets.WALLET_DIR, password=passpy.store.Store().get_key(path=PASS_PATH).strip())
     wallet.state, _ = WalletState.objects.get_or_create(name=NAME)
 except Exception:
     print(f"No database created yet, skipping initializing wallet")
@@ -53,7 +56,7 @@ def initialize_transaction(request, tx: TransactionSchema):
 
         # """ PREPARE TASK TO ENQUEUE """ #
         task = tasks.send_new_transaction.delay(
-                wallet_cfg=wallet.config.essential(),
+                wallet_cfg=wallet.config.essential(PASS_PATH),
                 state_id=wallet.state.id, tx=tx.dict())
 
         return utils.response(SUCCESS, 'task enqueued', {'task_id': task.id, 'queue_len': queue.count})
@@ -74,7 +77,7 @@ def finalize_transaction(request, tx_slate_id: str, address: str):
     try:
         ip, addr = connection_details(request, address)
         task = tasks.finalize_transaction.delay(
-                wallet_cfg=wallet.config.essential(),
+                wallet_cfg=wallet.config.essential(PASS_PATH),
                 connection=(ip.address, addr.address),
                 state_id=wallet.state.id,
                 tx_slate_id=tx_slate_id)
@@ -97,7 +100,7 @@ def cancel_transaction(request, tx_slate_id: str, address: str):
     ip, addr = connection_details(request, address)
     try:
         task = tasks.cancel_transaction.delay(
-                wallet_cfg=wallet.config.essential(),
+                wallet_cfg=wallet.config.essential(PASS_PATH),
                 state_id=wallet.state.id,
                 tx_slate_id=tx_slate_id)
 

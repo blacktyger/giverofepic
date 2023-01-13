@@ -1,9 +1,11 @@
 from rq import get_current_job, Retry
 from django.db.models import Q
 from rq.decorators import job
+import passpy as passpy
 import django_rq
 import django
 import json
+import sys
 import os
 
 # Must be called before imports from Django components
@@ -27,6 +29,7 @@ redis_conn = django_rq.get_connection('default')
 
 @job('epicbox', redis_conn, timeout=30)
 def cancel_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
+    wallet_cfg['password'] = passpy.store.Store().get_key(path=wallet_cfg['password']).strip()
     wallet = Wallet(**wallet_cfg)
     this_task = get_current_job()
     wallet.state = WalletState.objects.get(id=state_id)
@@ -42,7 +45,6 @@ def cancel_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
 
     transaction = Transaction.objects.filter(tx_slate_id=tx_slate_id).first()
     if transaction:
-        print(transaction.__dict__)
 
         # Cancel in local wallet history
         logger.info(f"Local wallet transaction: {wallet.cancel_tx_slate(tx_slate_id=tx_slate_id)}")
@@ -67,8 +69,10 @@ def cancel_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
 
 @job('epicbox', redis_conn, timeout=30, retry=Retry(max=1, interval=2))
 def finalize_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str, connection: tuple):
+    sys.tracebacklimit = 1
     logger.info(f">> start working on task finalize_transaction {get_current_job().id}")
 
+    wallet_cfg['password'] = passpy.store.Store().get_key(path=wallet_cfg['password']).strip()
     wallet = Wallet(**wallet_cfg)
     wallet.state = WalletState.objects.get(id=state_id)
 
@@ -152,8 +156,9 @@ def finalize_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str, conn
     processed += wallet.process_tx_slates(to_process)
 
     if not processed:
+        sys.tracebacklimit = 0
         wallet.state.unlock()  # Release the wallet
-        raise SystemExit('requested tx not found, re-try')
+        raise Exception('requested tx not found, re-try') from None
         # return utils.response(ERROR, "No slates processed")
 
     for tx_ in Transaction.objects.filter(status='initialized', archived=False):
@@ -199,11 +204,12 @@ def send_new_transaction(tx: dict, wallet_cfg: dict, state_id: str):
     """
     :param tx:
     :param wallet_cfg:
-    :param connection:
     :param state_id:
     :return:
     """
     tx = TransactionSchema.parse_obj(tx)
+    wallet_cfg['password'] = passpy.store.Store().get_key(path=wallet_cfg['password']).strip()
+
     wallet = Wallet(**wallet_cfg)
     this_task = get_current_job()
     wallet.state = WalletState.objects.get(id=state_id)

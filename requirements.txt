@@ -31,3 +31,5 @@ psutil
 django-ipware
 django-rq
 humanfriendly
+passpy
+killport
