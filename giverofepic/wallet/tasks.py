@@ -1,14 +1,15 @@
 from rq import get_current_job, Retry
 from django.db.models import Q
 from rq.decorators import job
-import passpy as passpy
 import django_rq
+import passpy
 import django
 import json
 import sys
 import os
 
 # Must be called before imports from Django components
+
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "giverofepic.settings")
 django.setup()
 
@@ -16,8 +17,8 @@ from .models import WalletState, get_wallet_status, Transaction, update_connecti
 from .const_values import SUCCESS, ERROR
 from .schema import TransactionSchema
 from .logger_ import get_logger
-from .epic_sdk import Wallet
-from .epic_sdk import utils
+from .epic_sdk import Wallet, utils
+from . import get_secret_value
 
 
 """Initialize Logger"""
@@ -29,7 +30,7 @@ redis_conn = django_rq.get_connection('default')
 
 @job('epicbox', redis_conn, timeout=30)
 def cancel_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
-    wallet_cfg['password'] = passpy.store.Store().get_key(path=wallet_cfg['password']).strip()
+    wallet_cfg['password'] = get_secret_value(wallet_cfg['password'])
     wallet = Wallet(**wallet_cfg)
     this_task = get_current_job()
     wallet.state = WalletState.objects.get(id=state_id)
@@ -72,7 +73,7 @@ def finalize_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str, conn
     sys.tracebacklimit = 1
     logger.info(f">> start working on task finalize_transaction {get_current_job().id}")
 
-    wallet_cfg['password'] = passpy.store.Store().get_key(path=wallet_cfg['password']).strip()
+    wallet_cfg['password'] = get_secret_value(wallet_cfg['password'])
     wallet = Wallet(**wallet_cfg)
     wallet.state = WalletState.objects.get(id=state_id)
 
@@ -208,7 +209,7 @@ def send_new_transaction(tx: dict, wallet_cfg: dict, state_id: str):
     :return:
     """
     tx = TransactionSchema.parse_obj(tx)
-    wallet_cfg['password'] = passpy.store.Store().get_key(path=wallet_cfg['password']).strip()
+    wallet_cfg['password'] = get_secret_value(wallet_cfg['password'])
 
     wallet = Wallet(**wallet_cfg)
     this_task = get_current_job()

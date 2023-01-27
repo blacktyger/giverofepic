@@ -1,4 +1,3 @@
-import passpy as passpy
 from ninja import NinjaAPI
 from rq.job import Job
 from rq import Queue
@@ -8,7 +7,7 @@ from .epic_sdk.utils import get_logger
 from .epic_sdk import Wallet, utils
 from giverofepic import secrets
 from .const_values import *
-from . import tasks
+from . import tasks, get_secret_value
 
 from .models import Transaction, WalletState, connection_details, connection_authorized
 from .schema import TransactionSchema
@@ -24,7 +23,7 @@ try:
     - executing outgoing transactions.
     """
     NAME = "epic_box_1"
-    wallet = Wallet(wallet_dir=secrets.WALLET_DIR, password=passpy.store.Store().get_key(path=PASS_PATH).strip())
+    wallet = Wallet(wallet_dir=secrets.WALLET_DIR, password=get_secret_value(PASS_PATH))
     wallet.state, _ = WalletState.objects.get_or_create(name=NAME)
 except Exception:
     print(f"No database created yet, skipping initializing wallet")
