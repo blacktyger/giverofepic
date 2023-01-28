@@ -2,7 +2,6 @@ from rq import get_current_job, Retry
 from django.db.models import Q
 from rq.decorators import job
 import django_rq
-import passpy
 import django
 import json
 import sys

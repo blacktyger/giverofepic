@@ -4,10 +4,10 @@ from rq import Queue
 import django_rq
 
 from .epic_sdk.utils import get_logger
+from . import tasks, get_secret_value
 from .epic_sdk import Wallet, utils
 from giverofepic import secrets
 from .const_values import *
-from . import tasks, get_secret_value
 
 from .models import Transaction, WalletState, connection_details, connection_authorized
 from .schema import TransactionSchema
@@ -25,7 +25,8 @@ try:
     NAME = "epic_box_1"
     wallet = Wallet(wallet_dir=secrets.WALLET_DIR, password=get_secret_value(PASS_PATH))
     wallet.state, _ = WalletState.objects.get_or_create(name=NAME)
-except Exception:
+except Exception as e:
+    print(e)
     print(f"No database created yet, skipping initializing wallet")
     pass
 
@@ -58,7 +59,7 @@ def initialize_transaction(request, tx: TransactionSchema):
                 wallet_cfg=wallet.config.essential(PASS_PATH),
                 state_id=wallet.state.id, tx=tx.dict())
 
-        return utils.response(SUCCESS, 'task enqueued', {'task_id': task.id, 'queue_len': queue.count})
+        return utils.response(SUCCESS, 'task enqueued', {'task_id':  task.id, 'queue_len': queue.count})
 
     except Exception as e:
         return utils.response(ERROR, f'send task failed, {str(e)}')

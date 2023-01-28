@@ -1,8 +1,8 @@
 """Utils for `wallet` app"""
-
 import passpy
 
-storage = passpy.store.Store()
+
+storage = passpy.store.Store(gpg_bin='/usr/bin/gpg')
 
 
 def get_secret_value(path: str):
