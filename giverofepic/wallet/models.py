@@ -12,7 +12,7 @@ import humanfriendly
 
 from giverofepic.secrets import WALLET_DIR
 from wallet.epic_sdk import utils
-from wallet.const_values import *
+from wallet.default_settings import *
 
 
 class WalletState(models.Model):
@@ -130,8 +130,8 @@ class Transaction(models.Model):
     @staticmethod
     def validate_tx_args(amount: float | int | str, receiver_address: str):
         try:
-            if float(amount) < 0.00000001:
-                return utils.response(ERROR, 'Invalid amount (<= 0)')
+            if 0.00000001 > float(amount) >= MAX_AMOUNT:
+                return utils.response(ERROR, f'Invalid amount (0 < {amount} < {MAX_AMOUNT})')
             elif len(receiver_address.strip()) != 52:
                 return utils.response(ERROR, 'Invalid receiver_address')
 

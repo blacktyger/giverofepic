@@ -130,7 +130,7 @@ SENTRY_DSN = "https://9238840ac47c4289a2035ba9d797566b@o4504589365411840.ingest.
 
 
 if os.getenv('DJANGO_DEVELOPMENT') == 'true':
-    DEBUG = False
+    # DEBUG = False
     SENTRY_DSN = "https://6f6cefddc3d849dc99dafaa8c9c0c6be@o4504589365411840.ingest.sentry.io/4504589394706432"
     ALLOWED_HOSTS = ['localhost', '209.127.179.199', 'giverofepic.com', 'www.giverofepic.com']
     RQ_QUEUES = {

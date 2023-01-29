@@ -7,7 +7,7 @@ from .epic_sdk.utils import get_logger
 from . import tasks, get_secret_value
 from .epic_sdk import Wallet, utils
 from giverofepic import secrets
-from .const_values import *
+from .default_settings import *
 
 from .models import Transaction, WalletState, connection_details, connection_authorized
 from .schema import TransactionSchema

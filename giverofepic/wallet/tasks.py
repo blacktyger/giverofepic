@@ -13,7 +13,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "giverofepic.settings")
 django.setup()
 
 from .models import WalletState, get_wallet_status, Transaction, update_connection_details
-from .const_values import SUCCESS, ERROR
+from .default_settings import SUCCESS, ERROR
 from .schema import TransactionSchema
 from .logger_ import get_logger
 from .epic_sdk import Wallet, utils
