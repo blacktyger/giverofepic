@@ -5,6 +5,7 @@ from django.urls import path, include
 from wallet.api import api
 from website import views as website_views
 
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", api.urls),

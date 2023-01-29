@@ -1,6 +1,8 @@
-import os
 from pathlib import Path
+import os
 
+from sentry_sdk.integrations.django import DjangoIntegration
+import sentry_sdk
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -41,7 +43,6 @@ RQ_QUEUES = {
         'DEFAULT_TIMEOUT': 360,
         },
     }
-
 
 X_FRAME_OPTIONS = "SAMEORIGIN"
 SILENCED_SYSTEM_CHECKS = ["security.W019"]
@@ -119,16 +120,19 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.1/howto/static-files/
 STATIC_URL = 'static/'
 STATIC_ROOT = '/dev_static/'
-STATICFILES_DIRS = (os.path.join(BASE_DIR, 'static'), )
+STATICFILES_DIRS = (os.path.join(BASE_DIR, 'static'),)
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+SENTRY_DSN = "https://9238840ac47c4289a2035ba9d797566b@o4504589365411840.ingest.sentry.io/4504589366329344"
+
 
 if os.getenv('DJANGO_DEVELOPMENT') == 'true':
-    # DEBUG = False
-
+    DEBUG = False
+    SENTRY_DSN = "https://6f6cefddc3d849dc99dafaa8c9c0c6be@o4504589365411840.ingest.sentry.io/4504589394706432"
+    ALLOWED_HOSTS = ['localhost', '209.127.179.199', 'giverofepic.com', 'www.giverofepic.com']
     RQ_QUEUES = {
         'default': {
             'HOST': '127.0.0.1',
@@ -137,3 +141,21 @@ if os.getenv('DJANGO_DEVELOPMENT') == 'true':
             'DEFAULT_TIMEOUT': 360,
             },
         }
+
+
+# // SENTRY CONFIGURATION
+sentry_sdk.init(
+    dsn=SENTRY_DSN,
+    integrations=[
+        DjangoIntegration(),
+        ],
+
+    # Set traces_sample_rate to 1.0 to capture 100%
+    # of transactions for performance monitoring.
+    # We recommend adjusting this value in production.
+    traces_sample_rate=1.0,
+
+    # If you wish to associate users to errors (assuming you are using
+    # django.contrib.auth) you may enable sending PII data.
+    send_default_pii=True
+    )

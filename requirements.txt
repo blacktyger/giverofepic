@@ -33,3 +33,4 @@ django-rq
 humanfriendly
 passpy
 killport
+sentry-sdk
