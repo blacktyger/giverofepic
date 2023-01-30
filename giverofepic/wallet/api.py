@@ -1,3 +1,4 @@
+from ninja.security import APIKeyQuery
 from ninja import NinjaAPI
 from rq.job import Job
 from rq import Queue

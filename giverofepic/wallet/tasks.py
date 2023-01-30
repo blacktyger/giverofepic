@@ -15,8 +15,8 @@ django.setup()
 from .models import WalletState, get_wallet_status, Transaction, update_connection_details
 from .default_settings import SUCCESS, ERROR
 from .schema import TransactionSchema
-from .logger_ import get_logger
 from .epic_sdk import Wallet, utils
+from .logger_ import get_logger
 from . import get_secret_value
 
 
@@ -43,16 +43,16 @@ def cancel_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
         this_task.save_meta()
         return is_unlocked
 
+    # TODO: Uncomment for production
+    wallet.state.lock()  # Lock the wallet instance
+
     transaction = Transaction.objects.filter(tx_slate_id=tx_slate_id).first()
     if transaction:
 
         # Cancel in local wallet history
         logger.info(f"Local wallet transaction: {wallet.cancel_tx_slate(tx_slate_id=tx_slate_id)}")
-
-        print('try to delete slate')
         logger.info(wallet.post_delete_tx_slate(receiving_address=transaction.sender_address,
                                                 slate=transaction.encrypted_slate))
-
         # Cancel in epic-box server
         cancel = wallet.post_cancel_transaction(
             receiving_address=transaction.receiver_address,
@@ -81,7 +81,7 @@ def finalize_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str, conn
     if is_unlocked['error']: return is_unlocked
 
     # TODO: Uncomment for production
-    # wallet.state.lock()  # Lock the wallet instance
+    wallet.state.lock()  # Lock the wallet instance
 
     # DEFINE FUNCTION VARIABLES
     is_requested_tx = False
@@ -225,7 +225,7 @@ def send_new_transaction(tx: dict, wallet_cfg: dict, state_id: str):
         return is_unlocked
 
     # TODO: Uncomment for production
-    # wallet.state.lock()  # Lock the wallet instance
+    wallet.state.lock()  # Lock the wallet instance
 
     # """ MAKE SURE WALLET BALANCE IS SUFFICIENT """ #
     if not wallet.is_balance_enough(tx.amount):

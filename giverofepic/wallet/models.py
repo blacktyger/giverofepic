@@ -63,24 +63,27 @@ class Address(models.Model):
         self.save()
         return self.is_locked
 
+
+class WalletAddress(Address):
+    def get_short(self):
+        try:
+            return f"{self.address[0:4]}...{self.address[-4:]}"
+        except Exception:
+            return self.address
+
     def __str__(self):
-        return f"ReceiverAddress(is_locked='{self.is_locked}', address='{self.address}')"
+        return f"WalletAddress(is_locked='{self.is_locked}', address='{self.get_short()}')"
 
 
-class ReceiverAddr(Address):
+class IPAddress(Address):
     def __str__(self):
-        return f"ReceiverAddr(is_locked='{self.is_locked}', address='{self.address}')"
-
-
-class IPAddr(Address):
-    def __str__(self):
-        return f"IPAddr(is_locked='{self.is_locked}', address='{self.address}')"
+        return f"IPAddress(is_locked='{self.is_locked}', address='{self.address}')"
 
 
 class Transaction(models.Model):
-    receiver_address = models.CharField(max_length=256)
+    receiver_address = models.CharField(max_length=254)
     encrypted_slate = models.JSONField(blank=True, null=True)
-    sender_address = models.CharField(max_length=256)
+    sender_address = models.CharField(max_length=254)
     wallet_db_id = models.IntegerField()
     tx_slate_id = models.UUIDField()
     timestamp = models.DateTimeField()
@@ -140,17 +143,26 @@ class Transaction(models.Model):
 
         return utils.response(SUCCESS, 'tx_args valid')
 
+    @staticmethod
+    def get_short(address):
+        try:
+            return f"{address[0:4]}...{address[-4:]}"
+        except Exception:
+            return address
+
     def __str__(self):
-        return f"Transaction(tx_status={self.status}, tx_slate_id={self.tx_slate_id})"
+        return f"Transaction(status={self.status}, " \
+               f"{self.get_short(self.sender_address)} -> {self.amount} -> {self.get_short(self.receiver_address)}"
+               # f"tx_slate_id={self.tx_slate_id})"
 
 
 def connection_details(request, addr, update: bool = False):
-    address, created = ReceiverAddr.objects.get_or_create(address=addr)
+    address, created = WalletAddress.objects.get_or_create(address=addr)
     address.last_activity = timezone.now()
 
     ip, is_routable = get_client_ip(request)
     if ip:
-        ip, created = IPAddr.objects.get_or_create(address=ip)
+        ip, created = IPAddress.objects.get_or_create(address=ip)
         ip.last_activity = timezone.now()
 
     if update: update_connection_details(ip, address)
@@ -159,8 +171,8 @@ def connection_details(request, addr, update: bool = False):
 
 
 def update_connection_details(ip, address):
-    ip_, created = IPAddr.objects.get_or_create(address=ip)
-    address_, created = ReceiverAddr.objects.get_or_create(address=address)
+    ip_, created = IPAddress.objects.get_or_create(address=ip)
+    address_, created = WalletAddress.objects.get_or_create(address=address)
 
     ip_.last_success_tx = timezone.now()
     ip_.save()
