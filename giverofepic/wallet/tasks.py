@@ -8,13 +8,12 @@ import sys
 import os
 
 # Must be called before imports from Django components
-
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "giverofepic.settings")
 django.setup()
 
 from .models import WalletState, get_wallet_status, Transaction, update_connection_details
 from .default_settings import SUCCESS, ERROR
-from .schema import TransactionSchema
+from .schema import PayloadSchema
 from .epic_sdk import Wallet, utils
 from .logger_ import get_logger
 from . import get_secret_value
@@ -27,13 +26,17 @@ logger = get_logger()
 redis_conn = django_rq.get_connection('default')
 
 
-@job('epicbox', redis_conn, timeout=30)
-def cancel_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
-    wallet_cfg['password'] = get_secret_value(wallet_cfg['password'])
-    wallet = Wallet(**wallet_cfg)
-    this_task = get_current_job()
-    wallet.state = WalletState.objects.get(id=state_id)
+def cancel_transaction(tx_slate_id: str, state_id: str):
+    # Get wallet instance from local database
+    wallet_instance = WalletState.objects.get(id=state_id)
 
+    # Initialize Wallet class from PythonSDK
+    wallet = Wallet(
+        wallet_dir=wallet_instance.wallet_dir,
+        password=get_secret_value(wallet_instance.password_path)
+        )
+    wallet.state = wallet_instance
+    this_task = get_current_job()
     logger.info(f">> start working on task cancel_transaction {this_task.id}")
 
     # """ GET OR WAIT FOR UNLOCKED INSTANCE """ #
@@ -43,11 +46,10 @@ def cancel_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
         this_task.save_meta()
         return is_unlocked
 
-    # TODO: Uncomment for production
-    wallet.state.lock()  # Lock the wallet instance
-
     transaction = Transaction.objects.filter(tx_slate_id=tx_slate_id).first()
+
     if transaction:
+        wallet.state.lock()  # Lock the wallet instance
 
         # Cancel in local wallet history
         logger.info(f"Local wallet transaction: {wallet.cancel_tx_slate(tx_slate_id=tx_slate_id)}")
@@ -64,6 +66,7 @@ def cancel_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str):
         transaction.status = 'cancelled'
         transaction.save()
 
+        wallet.state.unlock()  # Release wallet
         return utils.response(SUCCESS, 'transaction canceled')
 
 
@@ -199,21 +202,24 @@ def finalize_transaction(wallet_cfg: dict, state_id: str, tx_slate_id: str, conn
     return utils.response(SUCCESS, message, report)
 
 
-@job('epicbox', redis_conn, timeout=30)
-def send_new_transaction(tx: dict, wallet_cfg: dict, state_id: str):
+def send_new_transaction(address: str, amount: float, state_id: str):
     """
-    :param tx:
-    :param wallet_cfg:
+    :param amount:
+    :param address:
     :param state_id:
     :return:
     """
-    tx = TransactionSchema.parse_obj(tx)
-    wallet_cfg['password'] = get_secret_value(wallet_cfg['password'])
+    # Get wallet instance from local database
+    wallet_instance = WalletState.objects.get(id=state_id)
 
-    wallet = Wallet(**wallet_cfg)
+    # Initialize Wallet class from PythonSDK
+    wallet = Wallet(
+        wallet_dir=wallet_instance.wallet_dir,
+        password=get_secret_value(wallet_instance.password_path)
+        )
+    wallet.state = wallet_instance
+
     this_task = get_current_job()
-    wallet.state = WalletState.objects.get(id=state_id)
-
     logger.info(f">> start working on task send_new_transaction {this_task.id}")
 
     # """ GET OR WAIT FOR UNLOCKED INSTANCE """ #
@@ -224,31 +230,36 @@ def send_new_transaction(tx: dict, wallet_cfg: dict, state_id: str):
         this_task.save_meta()
         return is_unlocked
 
-    # TODO: Uncomment for production
     wallet.state.lock()  # Lock the wallet instance
 
     # """ MAKE SURE WALLET BALANCE IS SUFFICIENT """ #
-    if not wallet.is_balance_enough(tx.amount):
+    enough_balance = wallet.is_balance_enough(amount)
+
+    if not enough_balance:
         logger.warning('not enough balance')
         this_task.meta['message'] = f"Not enough balance, please try again later."
         this_task.save_meta()
+        wallet.state.unlock()  # Unlock the wallet instance
         return utils.response(ERROR, wallet.state.error_msg())
+
+    wallet.state.update_balance(enough_balance)
 
     # """ START CREATING NEW TRANSACTION """ #
     ## >> Create TX slate
-    init_tx_slate = wallet.create_tx_slate(amount=tx.amount)
+    init_tx_slate = wallet.create_tx_slate(amount=amount)
 
     ## >> Parse tx_args and prepare transaction slate
     try:
         tx_args = Transaction.parse_init_slate(init_tx_slate)
-        tx_args['receiver_address'] = tx.receiver_address
+        tx_args['receiver_address'] = address
+        tx_args['wallet_instance'] = wallet.state
         tx_args['sender_address'] = wallet.epicbox.address
         tx_args['status'] = "initialized"
-        tx_args['amount'] = tx.amount
+        tx_args['amount'] = amount
 
         ## >> Create new Transaction object
         transaction = Transaction.objects.create(**tx_args)
-        response_ = wallet.post_tx_slate(tx.receiver_address, init_tx_slate)
+        response_ = wallet.post_tx_slate(address, init_tx_slate)
 
         if response_:
             response = utils.response(SUCCESS, 'post tx success', {'tx_slate_id': transaction.tx_slate_id})
@@ -260,5 +271,4 @@ def send_new_transaction(tx: dict, wallet_cfg: dict, state_id: str):
         response = utils.response(ERROR, f"post tx failed and canceled, {str(e)}")
 
     wallet.state.unlock()  # Release wallet
-
     return response

@@ -1,66 +1,77 @@
-from ninja.security import APIKeyQuery
-from ninja import NinjaAPI
-from rq.job import Job
-from rq import Queue
+import time
+import uuid
+
 import django_rq
+from ninja import NinjaAPI
+from rq import Queue
+from rq.job import Job
 
 from .epic_sdk.utils import get_logger
-from . import tasks, get_secret_value
-from .epic_sdk import Wallet, utils
-from giverofepic import secrets
 from .default_settings import *
+from .epic_sdk import utils
+from . import tasks
 
-from .models import Transaction, WalletState, connection_details, connection_authorized
-from .schema import TransactionSchema
+from .models import Transaction, connection_details, connection_authorized, WalletState
+from .schema import PayloadSchema
 
 api = NinjaAPI()
 logger = get_logger()
-PASS_PATH = 'Wallet/password'
 
 
-try:
-    """
-    Initialize Server Wallet - Epic-Box Sender I, 
-    - executing outgoing transactions.
-    """
-    NAME = "epic_box_1"
-    wallet = Wallet(wallet_dir=secrets.WALLET_DIR, password=get_secret_value(PASS_PATH))
-    wallet.state, _ = WalletState.objects.get_or_create(name=NAME)
-except Exception as e:
-    print(e)
-    print(f"No database created yet, skipping initializing wallet")
-    pass
+# TODO: Initialize wallets via `setup_wallet.py`
+from . import setup_wallet
 
-"""Initialize Redis and Queue for managing task"""
+
+"""Initialize Redis for managing task"""
 redis_conn = django_rq.get_connection('default')
-queue = Queue('epicbox', default_timeout=800, connection=redis_conn)
 
 
 """API ENDPOINTS"""
 @api.post("/initialize_transaction")
-def initialize_transaction(request, tx: TransactionSchema):
+def initialize_transaction(request, payload: PayloadSchema):
     """
     API-ENDPOINT accessible for client to initialize sending transaction
+    :param payload: encrypted payload with request data
     :param request: request object
-    :param tx: transaction args (amount and address)
     :return: JSON response
     """
+    print(payload.__dict__)
+
     try:
+        # TODO: DECRYPT REQUEST PAYLOAD
+
         # """ VALIDATE TX_ARGS BEFORE START """ #
-        tx_args = Transaction.validate_tx_args(tx.amount, tx.receiver_address)
+        tx_args = Transaction.validate_tx_args(payload.amount, payload.address)
         if tx_args['error']: return tx_args
 
         # """ AUTHORIZE CONNECTION WITH TIME-LOCK FUNCTION """ #
-        ip, address = connection_details(request, tx.receiver_address)
+        ip, address = connection_details(request, payload.address)
         authorized = connection_authorized(ip, address)
         if authorized['error']: return authorized
 
-        # """ PREPARE TASK TO ENQUEUE """ #
-        task = tasks.send_new_transaction.delay(
-                wallet_cfg=wallet.config.essential(PASS_PATH),
-                state_id=wallet.state.id, tx=tx.dict())
+        # """ FIND AVAILABLE WALLET INSTANCE """ #
+        wallet_instance = None
 
-        return utils.response(SUCCESS, 'task enqueued', {'task_id':  task.id, 'queue_len': queue.count})
+        # TODO: improve selecting wallet function models.get_wallet_status(wallet)
+        while not wallet_instance:
+            for wallet in WalletState.objects.filter(name__startswith=payload.wallet_type):
+                print(wallet)
+                if not wallet.is_locked:
+                    wallet_instance = wallet
+                    break
+            if not wallet_instance:
+                print(f">> No wallet available, re-try soon")
+                time.sleep(1)
+
+        # """ PREPARE TASK TO ENQUEUE """ #
+        job_id = str(uuid.uuid4())
+        queue = Queue(wallet_instance.name, default_timeout=800, connection=redis_conn)
+        queue.enqueue(tasks.send_new_transaction, job_id=job_id, kwargs={
+            'state_id': wallet_instance.id,
+            'amount': payload.amount,
+            'address': payload.address})
+
+        return utils.response(SUCCESS, 'task enqueued', {'task_id': job_id, 'queue_len': queue.count})
 
     except Exception as e:
         return utils.response(ERROR, f'send task failed, {str(e)}')
@@ -97,22 +108,32 @@ def cancel_transaction(request, tx_slate_id: str, address: str):
     :param tx_slate_id:
     :return:
     """
-    print(tx_slate_id)
     ip, addr = connection_details(request, address)
     try:
-        task = tasks.cancel_transaction.delay(
-                wallet_cfg=wallet.config.essential(PASS_PATH),
-                state_id=wallet.state.id,
-                tx_slate_id=tx_slate_id)
+        transaction = Transaction.objects.filter(tx_slate_id=tx_slate_id).first()
+
+        if not transaction:
+            return utils.response(ERROR, 'Transaction with given id does not exists')
+
+        # We have to get wallet instance responsible for this transaction
+        wallet_instance = WalletState.objects.filter(id=transaction.wallet_instance.id).first()
+
+        # """ PREPARE TASK TO ENQUEUE """ #
+        job_id = str(uuid.uuid4())
+        queue = Queue(wallet_instance.name, default_timeout=800, connection=redis_conn)
+        queue.enqueue(
+            tasks.cancel_transaction,
+            job_id=job_id,
+            kwargs={'state_id': wallet_instance.id, 'tx_slate_id': tx_slate_id})
 
         # Update receiver lock status in database
-        print(ip.is_now_locked())
-        print(addr.is_now_locked())
+        ip.is_now_locked()
+        addr.is_now_locked()
 
-        return utils.response(SUCCESS, 'task enqueued', {'task_id': task.id, 'queue_len': queue.count})
+        return utils.response(SUCCESS, 'task enqueued', {'task_id': job_id, 'queue_len': queue.count})
 
     except Exception as e:
-        return utils.response(ERROR, 'cancel_transaction task failed', {str(e)})
+        return utils.response(ERROR, 'cancel_transaction task failed', {e.__str__})
 
 
 @api.get('/get_task/id={task_id}')
@@ -127,8 +148,8 @@ async def get_task(request, task_id: str):
         task = Job.fetch(task_id, redis_conn)
         message = task.meta['message'] if 'message' in task.meta else 'No message'
         return {'status': task.get_status(), 'message': message, 'result': task.result}
-    except Exception as e:
-        return utils.response(ERROR, f'Task not found: {task_id} \n {str(e)}')
+    except Exception as err:
+        return utils.response(ERROR, f'Task not found: {task_id} \n {str(err)}')
 
 
 @api.get("/validate_address/address={address}")

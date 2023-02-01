@@ -1,25 +1,40 @@
-import platform
 import decimal
 import json
 import time
 import uuid
 
 from datetime import datetime, timedelta
+
+from django.contrib import admin
 from django.utils import timezone
 from ipware import get_client_ip
 from django.db import models
 import humanfriendly
 
-from giverofepic.secrets import WALLET_DIR
-from wallet.epic_sdk import utils
+from wallet import get_short
 from wallet.default_settings import *
+from wallet.epic_sdk import utils
 
 
 class WalletState(models.Model):
-    id = models.UUIDField(primary_key=True, unique=True, default=uuid.uuid4)
-    name = models.CharField(max_length=128, default='epic_wallet')
+    # Added by script when initialized, read only/hidden
+    id = models.UUIDField(primary_key=True, unique=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=128, default='epic_wallet', unique=True)
+    address = models.CharField(max_length=64, default='eZdefault')
+    wallet_dir = models.CharField(max_length=128, default='~/.epic/main', editable=False)
+    max_amount = models.DecimalField(max_digits=16, decimal_places=3, default=0.01)
+    epicbox_port = models.IntegerField(default=EPICBOX_PORT)
+    password_path = models.CharField(max_length=128, default=SECRETS_PATH_PREFIX, editable=False)
+    epicbox_domain = models.CharField(max_length=64, default=EPICBOX_DOMAIN)
+
+    # Managed by script, read only
     is_locked = models.BooleanField(default=False)
-    wallet_dir = models.CharField(max_length=128, default=WALLET_DIR)
+    last_balance = models.JSONField(default=dict, null=True, blank=True)
+    last_transaction = models.DateTimeField(blank=True, null=True)
+
+    # Editable for users in admin panel
+    description = models.TextField(blank=True, default='Wallet instance used by faucet web-app.')
+    default_amount = models.DecimalField(max_digits=16, decimal_places=3, default=0.01)
 
     def lock(self):
         self.is_locked = True
@@ -29,58 +44,31 @@ class WalletState(models.Model):
         self.is_locked = False
         self.save()
 
+    def get_transactions(self):
+        return Transaction.objects.filter(wallet_instance=self)
+
+    def update_balance(self, balance: dict):
+        self.balance = balance
+        self.save()
+
     def error_msg(self):
         return "Wallet can not process your request now, try again later."
 
-    def __str__(self):
+    def __repr__(self):
         return f"WalletState(name='{self.name}', dir='{self.wallet_dir})"
 
-
-class Address(models.Model):
-    """Base class for authorization incoming transaction requests."""
-    address = models.CharField(max_length=256)
-    is_banned = models.BooleanField(default=False)
-    is_locked = models.BooleanField(default=False)
-    last_activity = models.DateTimeField(auto_now_add=True)
-    last_success_tx = models.DateTimeField(null=True, blank=True)
-
-    def locked_for(self):
-        if not self.last_success_tx or not self.is_locked:
-            return 0
-        else:
-            return self.last_success_tx + timedelta(minutes=1) - timezone.now()
-
-    def locked_msg(self):
-        return f'You have reached your limit, try again in ' \
-               f'<b>{humanfriendly.format_timespan(self.locked_for().seconds)}</b>.'
-
-    def is_now_locked(self):
-        if not self.last_success_tx:
-            self.is_locked = False
-        else:
-            self.is_locked = (timezone.now() - self.last_success_tx) < timedelta(minutes=1)
-
-        self.save()
-        return self.is_locked
-
-
-class WalletAddress(Address):
-    def get_short(self):
-        try:
-            return f"{self.address[0:4]}...{self.address[-4:]}"
-        except Exception:
-            return self.address
-
     def __str__(self):
-        return f"WalletAddress(is_locked='{self.is_locked}', address='{self.get_short()}')"
+        return f"[{self.name} wallet] {get_short(self.address)} | {self.last_balance} EPIC"
 
 
-class IPAddress(Address):
-    def __str__(self):
-        return f"IPAddress(is_locked='{self.is_locked}', address='{self.address}')"
+@admin.register(WalletState)
+class WalletStateAdmin(admin.ModelAdmin):
+    readonly_fields = ('name', 'last_balance', 'last_transaction', 'address', 'max_amount',
+                       'epicbox_domain', 'epicbox_port', )
 
 
 class Transaction(models.Model):
+    wallet_instance = models.ForeignKey(WalletState, on_delete=models.DO_NOTHING, blank=True, null=True)
     receiver_address = models.CharField(max_length=254)
     encrypted_slate = models.JSONField(blank=True, null=True)
     sender_address = models.CharField(max_length=254)
@@ -143,17 +131,53 @@ class Transaction(models.Model):
 
         return utils.response(SUCCESS, 'tx_args valid')
 
-    @staticmethod
-    def get_short(address):
-        try:
-            return f"{address[0:4]}...{address[-4:]}"
-        except Exception:
-            return address
-
     def __str__(self):
         return f"Transaction(status={self.status}, " \
-               f"{self.get_short(self.sender_address)} -> {self.amount} -> {self.get_short(self.receiver_address)}"
-               # f"tx_slate_id={self.tx_slate_id})"
+               f"{get_short(self.sender_address)} -> {self.amount} -> {get_short(self.receiver_address)}"
+
+
+class Address(models.Model):
+    """Base class for authorization incoming transaction requests."""
+    address = models.CharField(max_length=256)
+    is_banned = models.BooleanField(default=False)
+    is_locked = models.BooleanField(default=False)
+    last_activity = models.DateTimeField(auto_now_add=True)
+    last_success_tx = models.DateTimeField(null=True, blank=True)
+
+    def locked_for(self):
+        if not self.last_success_tx or not self.is_locked:
+            return 0
+        else:
+            return self.last_success_tx + timedelta(minutes=1) - timezone.now()
+
+    def locked_msg(self):
+        return f'You have reached your limit, try again in ' \
+               f'<b>{humanfriendly.format_timespan(self.locked_for().seconds)}</b>.'
+
+    def is_now_locked(self):
+        if not self.last_success_tx:
+            self.is_locked = False
+        else:
+            self.is_locked = (timezone.now() - self.last_success_tx) < timedelta(minutes=1)
+
+        self.save()
+        return self.is_locked
+
+
+class WalletAddress(Address):
+    def get_short(self):
+        try:
+            return f"{self.address[0:4]}...{self.address[-4:]}"
+        except Exception:
+            return self.address
+
+    def __str__(self):
+        return f"WalletAddress(is_locked='{self.is_locked}', address='{self.get_short()}')"
+
+
+class IPAddress(Address):
+    def __str__(self):
+        return f"IPAddress(is_locked='{self.is_locked}', address='{self.address}')"
 
 
 def connection_details(request, addr, update: bool = False):

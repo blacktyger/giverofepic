@@ -7,8 +7,9 @@ class CancelTransaction(Schema):
     tx_slate_id: str
 
 
-class TransactionSchema(ModelSchema):
-    class Config:
-        model = Transaction
-        model_fields = ["amount", "receiver_address"]
+class PayloadSchema(Schema):
+    address: str
+    api_key: str
+    amount: float
+    wallet_type: str
 
