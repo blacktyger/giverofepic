@@ -1,11 +1,11 @@
 import pickle
+import json
+import sys
+import os
 
 from rq import get_current_job
 import django_rq
 import django
-import json
-import sys
-import os
 
 # Must be called before imports from Django components
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "giverofepic.settings")

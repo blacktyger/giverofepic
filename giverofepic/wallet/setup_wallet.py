@@ -40,16 +40,16 @@ for wallet_name in WALLETS:
     # Initialize queue and run redis worker to consume this instance tasks
     queue = Queue(wallet_name, default_timeout=800, connection=redis_conn)
 
-    if not Worker.find_by_key(worker_key=f"rq:worker:{wallet_name}_worker", connection=redis_conn):
-        worker = Worker([queue], connection=redis_conn, name=f"{wallet_name}_worker")
-        process = multiprocessing.Process(target=worker.work, kwargs={'with_scheduler': True})
-        process.start()
-        print(f">> Worker {worker.name} running ({worker.get_state()})")
-    else:
-        worker = Worker.find_by_key(worker_key=f"rq:worker:{wallet_name}_worker", connection=redis_conn)
-        try: worker.work()
-        except Exception: pass
-        print(f">> Worker {worker.name} running ({worker.get_state()})")
+    # if not Worker.find_by_key(worker_key=f"rq:worker:{wallet_name}_worker", connection=redis_conn):
+    #     worker = Worker([queue], connection=redis_conn, name=f"{wallet_name}_worker")
+    #     process = multiprocessing.Process(target=worker.work, kwargs={'with_scheduler': True})
+    #     process.start()
+    #     # print(f">> Worker {worker.name} running ({worker.get_state()})")
+    # else:
+    #     worker = Worker.find_by_key(worker_key=f"rq:worker:{wallet_name}_worker", connection=redis_conn)
+    #     try: worker.work()
+    #     except Exception: pass
+    #     print(f">> Worker {worker.name} running ({worker.get_state()})")
 
     # except Exception as e:
     #     print(e)

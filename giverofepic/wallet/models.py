@@ -4,22 +4,23 @@ import json
 import time
 import uuid
 
-from django.contrib import admin
-from django.db.models import Q
+from asgiref.sync import async_to_sync, sync_to_async
 from django.utils import timezone
+from django.contrib import admin
 from ipware import get_client_ip
+from django.db.models import Q
 from django.db import models
 import humanfriendly
 
-from wallet import get_short
 from wallet.default_settings import *
 from wallet.epic_sdk import utils
+from wallet import get_short
 
 
 class WalletState(models.Model):
     # Added by script when initialized, read only/hidden
     id = models.UUIDField(primary_key=True, unique=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=128, default='epic_wallet', unique=True)
+    name = models.CharField(max_length=128, default='faucet_1', unique=True)
     address = models.CharField(max_length=64, default='eZdefault')
     wallet_dir = models.CharField(max_length=128, default='~/.epic/main', editable=False)
     max_amount = models.DecimalField(max_digits=16, decimal_places=3, default=0.01)
@@ -67,7 +68,7 @@ class WalletStateAdmin(admin.ModelAdmin):
 
 
 class Transaction(models.Model):
-    wallet_instance = models.ForeignKey(WalletState, on_delete=models.SET_NULL, blank=True, null=True)
+    wallet_instance = models.ForeignKey(WalletState, on_delete=models.SET_NULL, blank=True, null=True, related_name='wallet')
     receiver_address = models.CharField(max_length=254)
     encrypted_slate = models.JSONField(blank=True, null=True)
     sender_address = models.CharField(max_length=254)
@@ -165,36 +166,28 @@ class Address(models.Model):
 
 
 class WalletAddress(Address):
-    def get_short(self):
-        try:
-            return f"{self.address[0:4]}...{self.address[-4:]}"
-        except Exception:
-            return self.address
-
     def __str__(self):
-        return f"WalletAddress(is_locked='{self.is_locked}', address='{self.get_short()}')"
+        return f"WalletAddress(is_locked='{self.is_locked}', address='{get_short(self.address)}')"
 
 
 class IPAddress(Address):
     def __str__(self):
         return f"IPAddress(is_locked='{self.is_locked}', address='{self.address}')"
 
-
-def connection_details(request, addr, update: bool = False):
-    address, created = WalletAddress.objects.get_or_create(address=addr)
+async def connection_details(request, addr, update: bool = False):
+    address, created = await WalletAddress.objects.aget_or_create(address=addr)
     address.last_activity = timezone.now()
 
     ip, is_routable = get_client_ip(request)
     if ip:
-        ip, created = IPAddress.objects.get_or_create(address=ip)
+        ip, created = await IPAddress.objects.aget_or_create(address=ip)
         ip.last_activity = timezone.now()
 
-    if update: update_connection_details(ip, address)
+    if update: await update_connection_details(ip, address)
 
     return ip, address
 
-
-def update_connection_details(ip, address):
+async def update_connection_details(ip, address):
     ip.last_success_tx = timezone.now()
     ip.save()
     address.last_success_tx = timezone.now()
@@ -224,25 +217,26 @@ class WalletManager:
             filter_ = Q(id=state_id) | Q(name=name)
             return self.wallets.filter(filter_).first()
 
-    def get_wallet_by_tx(self, tx_slate_id: str):
+    async def get_wallet_by_tx(self, tx_slate_id: str):
         """Get transaction by slate id and return tuple (wallet, transaction)"""
         filter_ = Q(tx_slate_id=tx_slate_id)
-        tx = self.transactions.filter(filter_).first()
+        tx = await self.transactions.filter(filter_).afirst()
         if tx:
-            return tx.wallet_instance, tx
+            # return await self.transactions.select_related('wallet').aget()
+            return await sync_to_async(lambda: tx.wallet_instance)(), tx
         else:
             return None, None
 
-    def get_available_wallet(self, wallet_type: str = 'faucet'):
+    async def get_available_wallet(self, wallet_type: str = 'faucet'):
         """Get available (not locked, ready to work) wallet instance"""
         filter_ = Q(name__startswith=wallet_type)
         try_num = NUM_OF_ATTEMPTS
         available_wallet = None
 
         while not available_wallet and try_num:
-            print(f">> {self.wallets.filter(filter_).count()} '{wallet_type}' wallets")
+            print(f">> {await self.wallets.filter(filter_).acount()} '{wallet_type}' wallets")
 
-            for wallet in self.wallets.filter(filter_):
+            async for wallet in self.wallets.filter(filter_):
                 if not wallet.is_locked:
                     available_wallet = wallet
                     break
@@ -251,4 +245,5 @@ class WalletManager:
                 print(f">> No wallet available, {try_num} attempts left")
                 time.sleep(ATTEMPTS_INTERVAL)
 
+        print(f">> Available wallet: {available_wallet}")
         return available_wallet
