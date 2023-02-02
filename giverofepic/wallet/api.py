@@ -1,22 +1,21 @@
-import time
+import pickle
 import uuid
 
 import django_rq
 from ninja import NinjaAPI
 from rq import Queue
-from rq.job import Job
+from rq.job import Job, Retry
 
 from .epic_sdk.utils import get_logger
 from .default_settings import *
 from .epic_sdk import utils
 from . import tasks
 
-from .models import Transaction, connection_details, connection_authorized, WalletState
+from .models import Transaction, connection_details, connection_authorized, WalletState, WalletManager
 from .schema import PayloadSchema
 
 api = NinjaAPI()
 logger = get_logger()
-
 
 # TODO: Initialize wallets via `setup_wallet.py`
 from . import setup_wallet
@@ -25,8 +24,9 @@ from . import setup_wallet
 """Initialize Redis for managing task"""
 redis_conn = django_rq.get_connection('default')
 
-
 """API ENDPOINTS"""
+
+
 @api.post("/initialize_transaction")
 def initialize_transaction(request, payload: PayloadSchema):
     """
@@ -39,6 +39,7 @@ def initialize_transaction(request, payload: PayloadSchema):
 
     try:
         # TODO: DECRYPT REQUEST PAYLOAD
+        # TODO: AUTHORIZE WITH API_KEY
 
         # """ VALIDATE TX_ARGS BEFORE START """ #
         tx_args = Transaction.validate_tx_args(payload.amount, payload.address)
@@ -50,26 +51,20 @@ def initialize_transaction(request, payload: PayloadSchema):
         if authorized['error']: return authorized
 
         # """ FIND AVAILABLE WALLET INSTANCE """ #
-        wallet_instance = None
+        wallet_instance = WalletManager(). \
+            get_available_wallet(wallet_type=payload.wallet_type)
 
-        # TODO: improve selecting wallet function models.get_wallet_status(wallet)
-        while not wallet_instance:
-            for wallet in WalletState.objects.filter(name__startswith=payload.wallet_type):
-                print(wallet)
-                if not wallet.is_locked:
-                    wallet_instance = wallet
-                    break
-            if not wallet_instance:
-                print(f">> No wallet available, re-try soon")
-                time.sleep(1)
+        if not wallet_instance:
+            message = f"Can't process your request right now, please try again later."
+            return utils.response(ERROR, message)
 
         # """ PREPARE TASK TO ENQUEUE """ #
         job_id = str(uuid.uuid4())
+        args = (pickle.dumps(payload.amount),
+                pickle.dumps(payload.address),
+                pickle.dumps(wallet_instance))
         queue = Queue(wallet_instance.name, default_timeout=800, connection=redis_conn)
-        queue.enqueue(tasks.send_new_transaction, job_id=job_id, kwargs={
-            'state_id': wallet_instance.id,
-            'amount': payload.amount,
-            'address': payload.address})
+        queue.enqueue(tasks.send_new_transaction, job_id=job_id, args=args)
 
         return utils.response(SUCCESS, 'task enqueued', {'task_id': job_id, 'queue_len': queue.count})
 
@@ -87,15 +82,22 @@ def finalize_transaction(request, tx_slate_id: str, address: str):
     :return:
     """
     try:
-        ip, addr = connection_details(request, address)
-        task = tasks.finalize_transaction.delay(
-                wallet_cfg=wallet.config.essential(PASS_PATH),
-                connection=(ip.address, addr.address),
-                state_id=wallet.state.id,
-                tx_slate_id=tx_slate_id)
+        # We have to get transaction and wallet instance objects
+        wallet_instance, transaction = WalletManager().get_wallet_by_tx(tx_slate_id=tx_slate_id)
 
-        return utils.response(SUCCESS, 'task enqueued',
-                              {'task_id': task.id, 'queue_len': queue.count})
+        if not transaction:
+            return utils.response(ERROR, 'Transaction with given id does not exists')
+
+        # """ PREPARE TASK TO ENQUEUE """ #
+        job_id = str(uuid.uuid4())
+        args = (pickle.dumps(transaction),
+                pickle.dumps(wallet_instance),
+                pickle.dumps(connection_details(request, address)))
+        queue = Queue(wallet_instance.name, default_timeout=800, connection=redis_conn)
+        queue.enqueue(tasks.finalize_transaction, job_id=job_id, args=args, retry=Retry(max=1, interval=2))
+
+        return utils.response(SUCCESS, 'task enqueued', {'task_id': job_id, 'queue_len': queue.count})
+
     except Exception as e:
         return utils.response(ERROR, 'finalize_transaction task failed', str(e))
 
@@ -108,32 +110,29 @@ def cancel_transaction(request, tx_slate_id: str, address: str):
     :param tx_slate_id:
     :return:
     """
-    ip, addr = connection_details(request, address)
     try:
-        transaction = Transaction.objects.filter(tx_slate_id=tx_slate_id).first()
+        # We have to get transaction and wallet instance objects
+        wallet_instance, transaction = WalletManager().get_wallet_by_tx(tx_slate_id=tx_slate_id)
 
         if not transaction:
             return utils.response(ERROR, 'Transaction with given id does not exists')
 
-        # We have to get wallet instance responsible for this transaction
-        wallet_instance = WalletState.objects.filter(id=transaction.wallet_instance.id).first()
-
         # """ PREPARE TASK TO ENQUEUE """ #
         job_id = str(uuid.uuid4())
+        args = (pickle.dumps(transaction), pickle.dumps(wallet_instance))
         queue = Queue(wallet_instance.name, default_timeout=800, connection=redis_conn)
-        queue.enqueue(
-            tasks.cancel_transaction,
-            job_id=job_id,
-            kwargs={'state_id': wallet_instance.id, 'tx_slate_id': tx_slate_id})
+        queue.enqueue(tasks.cancel_transaction, job_id=job_id, args=args)
 
         # Update receiver lock status in database
+        ip, addr = connection_details(request, address)
         ip.is_now_locked()
         addr.is_now_locked()
 
         return utils.response(SUCCESS, 'task enqueued', {'task_id': job_id, 'queue_len': queue.count})
 
     except Exception as e:
-        return utils.response(ERROR, 'cancel_transaction task failed', {e.__str__})
+        print(e)
+        return utils.response(ERROR, 'cancel_transaction task failed')
 
 
 @api.get('/get_task/id={task_id}')

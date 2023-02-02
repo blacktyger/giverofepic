@@ -1,5 +1,6 @@
 import multiprocessing
 import threading
+import time
 
 from rq import Queue, Worker
 import django_rq
@@ -39,14 +40,13 @@ for wallet_name in WALLETS:
 
         # Initialize queue and run redis worker to consume this instance tasks
         queue = Queue(wallet_name, default_timeout=800, connection=redis_conn)
-        print(queue)
 
         if len(Worker.all(queue=queue)) < 1:
             worker = Worker([queue], connection=redis_conn, name=wallet_name)
-            print(worker)
             process = multiprocessing.Process(target=worker.work, kwargs={'with_scheduler': True})
             process.start()
 
+        time.sleep(0.3)
         print(f">> Worker {Worker.all(queue=queue)[0].name} running ({Worker.all(queue=queue)[0].state})")
 
     except Exception as e:

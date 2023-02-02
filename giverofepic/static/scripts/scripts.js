@@ -2,6 +2,8 @@ let feedbackField = $('.feedbackField')
 let confirmButton = $('#confirmButton')
 let addressIcon = $('.addressIcon')
 let address = $('#walletAddress')
+let apiKey= 'test_api_key'
+let wallet_type = 'faucet'
 
 const spinnerHTMLsm = `<div class="spinner-border spinner-border-sm fs-6" role="status"></div>`
 const spinnerHTML = `<div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>
@@ -14,7 +16,12 @@ async function sendTransaction() {
     let taskFinished = false
     let amount = 0.01
     let query = "api/initialize_transaction"
-    let body = {receiver_address: address.val(), amount: amount}
+    let body = {
+        address: address.val(),
+        amount: amount,
+        api_key: apiKey,
+        wallet_type: wallet_type
+    }
 
     updateForm(spinnerHTML)
     feedbackField.text('Connecting to the server..')
@@ -150,6 +157,7 @@ async function transactionInitializedAlert(task) {
             console.log('Closed by timer')
             await cancelTransaction(tResult['tx_slate_id'])
             await spawnToast('error', 'Transaction time expired')
+            await resetForm()
 
         // Canceled by user
         } else if (aResult.dismiss === Swal.DismissReason.cancel) {

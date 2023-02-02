@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from django.contrib import admin
+from django.db.models import Q
 from django.utils import timezone
 from ipware import get_client_ip
 from django.db import models
@@ -48,17 +49,14 @@ class WalletState(models.Model):
         return Transaction.objects.filter(wallet_instance=self)
 
     def update_balance(self, balance: dict):
-        self.balance = balance
+        self.last_balance = balance
         self.save()
-
-    def error_msg(self):
-        return "Wallet can not process your request now, try again later."
 
     def __repr__(self):
         return f"WalletState(name='{self.name}', dir='{self.wallet_dir})"
 
     def __str__(self):
-        return f"[{self.name} wallet] {get_short(self.address)} | {self.last_balance} EPIC"
+        return f"[{self.name} wallet] {get_short(self.address)}"
 
 
 @admin.register(WalletState)
@@ -195,16 +193,16 @@ def connection_details(request, addr, update: bool = False):
 
 
 def update_connection_details(ip, address):
-    ip_, created = IPAddress.objects.get_or_create(address=ip)
-    address_, created = WalletAddress.objects.get_or_create(address=address)
+    # ip_, created = IPAddress.objects.get_or_create(address=ip)
+    # address_, created = WalletAddress.objects.get_or_create(address=address)
+    ip.last_success_tx = timezone.now()
+    ip.save()
 
-    ip_.last_success_tx = timezone.now()
-    ip_.save()
-
-    address_.last_success_tx = timezone.now()
-    address_.save()
+    address.last_success_tx = timezone.now()
+    address.save()
 
     return ip, address
+
 
 def connection_authorized(ip, address):
     if ip.is_now_locked():
@@ -216,24 +214,44 @@ def connection_authorized(ip, address):
     return utils.response(SUCCESS, 'authorized')
 
 
-def get_wallet_status(wallet):
-    """
-    :param wallet:
-    :return:
-    """
-    re_try = NUM_OF_ATTEMPTS
+class WalletManager:
+    """ Helper class to manage multiple wallet instances"""
+    wallets = WalletState.objects
+    transactions = Transaction.objects
 
-    # Refresh wallet state from DB
-    WalletState.objects.get(id=wallet.state.id)
+    def get_wallet(self, state_id: str = None, name: str = None):
+        """Get wallet instance from database by name, id or transaction id"""
+        if state_id or name:
+            filter_ = Q(id=state_id) | Q(name=name)
+            return self.wallets.filter(filter_).first()
 
-    # TRY NUM_OF_ATTEMPTS WITH ATTEMPTS_INTERVAL TILL FAIL
-    while WalletState.objects.get(id=wallet.state.id).is_locked and re_try:
-        print(f"locked, {re_try} re-try attempts left ")
-        re_try -= 1
-        time.sleep(ATTEMPTS_INTERVAL)
+    def get_wallet_by_tx(self, tx_slate_id: str):
+        """Get transaction by slate id and return tuple (wallet, transaction)"""
+        filter_ = Q(tx_slate_id=tx_slate_id)
+        tx = self.transactions.filter(filter_).first()
+        if tx:
+            return tx.wallet_instance, tx
+        else:
+            return None, None
 
-    if WalletState.objects.get(id=wallet.state.id).is_locked:
-        return utils.response(ERROR, wallet.state.error_msg())
+    def get_available_wallet(self, wallet_type: str = 'faucet'):
+        """Get available (not locked, ready to work) wallet instance"""
+        filter_ = Q(name__startswith=wallet_type)
+        try_num = NUM_OF_ATTEMPTS
+        available_wallet = None
 
-    wallet.state = WalletState.objects.get(id=wallet.state.id)
-    return utils.response(SUCCESS, 'wallet ready')
+        while not available_wallet and try_num:
+            print(f">> {self.wallets.filter(filter_).count()} '{wallet_type}' wallets")
+
+            for wallet in self.wallets.filter(filter_):
+                if not wallet.is_locked:
+                    available_wallet = wallet
+                    break
+            if not available_wallet:
+                try_num -= 1
+                print(f">> No wallet available, {try_num} attempts left")
+                time.sleep(ATTEMPTS_INTERVAL)
+
+        return available_wallet
+
+
