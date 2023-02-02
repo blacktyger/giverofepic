@@ -1,9 +1,8 @@
+from datetime import datetime, timedelta
 import decimal
 import json
 import time
 import uuid
-
-from datetime import datetime, timedelta
 
 from django.contrib import admin
 from django.db.models import Q
@@ -31,7 +30,8 @@ class WalletState(models.Model):
     # Managed by script, read only
     is_locked = models.BooleanField(default=False)
     last_balance = models.JSONField(default=dict, null=True, blank=True)
-    last_transaction = models.DateTimeField(blank=True, null=True)
+    last_spendable = models.DecimalField(max_digits=16, decimal_places=3, null=True, default=0)
+    last_transaction = models.ForeignKey('Transaction', on_delete=models.SET_NULL, blank=True, null=True)
 
     # Editable for users in admin panel
     description = models.TextField(blank=True, default='Wallet instance used by faucet web-app.')
@@ -50,23 +50,24 @@ class WalletState(models.Model):
 
     def update_balance(self, balance: dict):
         self.last_balance = balance
+        self.last_spendable = int(balance['amount_currently_spendable']) / 10**8
         self.save()
 
     def __repr__(self):
         return f"WalletState(name='{self.name}', dir='{self.wallet_dir})"
 
     def __str__(self):
-        return f"[{self.name} wallet] {get_short(self.address)}"
+        return f"[{self.name} wallet] {get_short(self.address)} | {self.last_spendable} EPIC"
 
 
 @admin.register(WalletState)
 class WalletStateAdmin(admin.ModelAdmin):
-    readonly_fields = ('name', 'last_balance', 'last_transaction', 'address', 'max_amount',
+    readonly_fields = ('name', 'last_spendable', 'last_balance', 'last_transaction', 'address', 'max_amount',
                        'epicbox_domain', 'epicbox_port', )
 
 
 class Transaction(models.Model):
-    wallet_instance = models.ForeignKey(WalletState, on_delete=models.DO_NOTHING, blank=True, null=True)
+    wallet_instance = models.ForeignKey(WalletState, on_delete=models.SET_NULL, blank=True, null=True)
     receiver_address = models.CharField(max_length=254)
     encrypted_slate = models.JSONField(blank=True, null=True)
     sender_address = models.CharField(max_length=254)
@@ -130,8 +131,9 @@ class Transaction(models.Model):
         return utils.response(SUCCESS, 'tx_args valid')
 
     def __str__(self):
-        return f"Transaction(status={self.status}, " \
-               f"{get_short(self.sender_address)} -> {self.amount} -> {get_short(self.receiver_address)}"
+        return f"Tx({self.status}, {self.timestamp.strftime('%H:%M:%S')}, " \
+               f"{self.wallet_instance.name} -> {self.amount:.2f} -> " \
+               f"{get_short(self.receiver_address)})"
 
 
 class Address(models.Model):
@@ -193,11 +195,8 @@ def connection_details(request, addr, update: bool = False):
 
 
 def update_connection_details(ip, address):
-    # ip_, created = IPAddress.objects.get_or_create(address=ip)
-    # address_, created = WalletAddress.objects.get_or_create(address=address)
     ip.last_success_tx = timezone.now()
     ip.save()
-
     address.last_success_tx = timezone.now()
     address.save()
 
@@ -253,5 +252,3 @@ class WalletManager:
                 time.sleep(ATTEMPTS_INTERVAL)
 
         return available_wallet
-
-

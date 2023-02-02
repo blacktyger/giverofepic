@@ -1,18 +1,17 @@
 import pickle
 import uuid
 
-import django_rq
+from rq.job import Job, Retry
 from ninja import NinjaAPI
 from rq import Queue
-from rq.job import Job, Retry
+import django_rq
 
+from .models import Transaction, connection_details, connection_authorized, WalletManager
 from .epic_sdk.utils import get_logger
+from .schema import PayloadSchema
 from .default_settings import *
 from .epic_sdk import utils
 from . import tasks
-
-from .models import Transaction, connection_details, connection_authorized, WalletState, WalletManager
-from .schema import PayloadSchema
 
 api = NinjaAPI()
 logger = get_logger()
@@ -24,9 +23,8 @@ from . import setup_wallet
 """Initialize Redis for managing task"""
 redis_conn = django_rq.get_connection('default')
 
+
 """API ENDPOINTS"""
-
-
 @api.post("/initialize_transaction")
 def initialize_transaction(request, payload: PayloadSchema):
     """
@@ -51,8 +49,7 @@ def initialize_transaction(request, payload: PayloadSchema):
         if authorized['error']: return authorized
 
         # """ FIND AVAILABLE WALLET INSTANCE """ #
-        wallet_instance = WalletManager(). \
-            get_available_wallet(wallet_type=payload.wallet_type)
+        wallet_instance = WalletManager().get_available_wallet(wallet_type=payload.wallet_type)
 
         if not wallet_instance:
             message = f"Can't process your request right now, please try again later."
@@ -60,13 +57,11 @@ def initialize_transaction(request, payload: PayloadSchema):
 
         # """ PREPARE TASK TO ENQUEUE """ #
         job_id = str(uuid.uuid4())
-        args = (pickle.dumps(payload.amount),
-                pickle.dumps(payload.address),
-                pickle.dumps(wallet_instance))
+        args = tuple(pickle.dumps(v) for v in [payload.amount, payload.address, wallet_instance])
         queue = Queue(wallet_instance.name, default_timeout=800, connection=redis_conn)
         queue.enqueue(tasks.send_new_transaction, job_id=job_id, args=args)
 
-        return utils.response(SUCCESS, 'task enqueued', {'task_id': job_id, 'queue_len': queue.count})
+        return utils.response(SUCCESS, 'task successfully enqueued', {'task_id': job_id, 'queue_len': queue.count})
 
     except Exception as e:
         return utils.response(ERROR, f'send task failed, {str(e)}')
@@ -90,13 +85,11 @@ def finalize_transaction(request, tx_slate_id: str, address: str):
 
         # """ PREPARE TASK TO ENQUEUE """ #
         job_id = str(uuid.uuid4())
-        args = (pickle.dumps(transaction),
-                pickle.dumps(wallet_instance),
-                pickle.dumps(connection_details(request, address)))
+        args = tuple(pickle.dumps(v) for v in [transaction, wallet_instance, connection_details(request, address)])
         queue = Queue(wallet_instance.name, default_timeout=800, connection=redis_conn)
-        queue.enqueue(tasks.finalize_transaction, job_id=job_id, args=args, retry=Retry(max=1, interval=2))
+        queue.enqueue(tasks.finalize_transaction, job_id=job_id, args=args, retry=Retry(max=1, interval=3))
 
-        return utils.response(SUCCESS, 'task enqueued', {'task_id': job_id, 'queue_len': queue.count})
+        return utils.response(SUCCESS, 'task successfully enqueued', {'task_id': job_id, 'queue_len': queue.count})
 
     except Exception as e:
         return utils.response(ERROR, 'finalize_transaction task failed', str(e))
@@ -119,16 +112,11 @@ def cancel_transaction(request, tx_slate_id: str, address: str):
 
         # """ PREPARE TASK TO ENQUEUE """ #
         job_id = str(uuid.uuid4())
-        args = (pickle.dumps(transaction), pickle.dumps(wallet_instance))
+        args = tuple(pickle.dumps(v) for v in [transaction, wallet_instance, connection_details(request, address)])
         queue = Queue(wallet_instance.name, default_timeout=800, connection=redis_conn)
         queue.enqueue(tasks.cancel_transaction, job_id=job_id, args=args)
 
-        # Update receiver lock status in database
-        ip, addr = connection_details(request, address)
-        ip.is_now_locked()
-        addr.is_now_locked()
-
-        return utils.response(SUCCESS, 'task enqueued', {'task_id': job_id, 'queue_len': queue.count})
+        return utils.response(SUCCESS, 'task successfully enqueued', {'task_id': job_id, 'queue_len': queue.count})
 
     except Exception as e:
         print(e)
@@ -143,15 +131,10 @@ async def get_task(request, task_id: str):
     :param task_id: UUID str, task ID
     :return: JSON response
     """
-    try:
-        task = Job.fetch(task_id, redis_conn)
-        message = task.meta['message'] if 'message' in task.meta else 'No message'
-        return {'status': task.get_status(), 'message': message, 'result': task.result}
-    except Exception as err:
-        return utils.response(ERROR, f'Task not found: {task_id} \n {str(err)}')
+    # try:
+    task = Job.fetch(task_id, redis_conn)
+    message = task.meta['message'] if 'message' in task.meta else 'No message'
+    return {'status': task.get_status(), 'message': message, 'result': task.result}
 
-
-@api.get("/validate_address/address={address}")
-def validate_address(request, address: str):
-    print(address, len(address))
-    return {'valid_': len(address.strip()) == 52}
+    # except Exception as err:
+    #     return utils.response(ERROR, f'Task not found: {task_id} \n {str(err)}')

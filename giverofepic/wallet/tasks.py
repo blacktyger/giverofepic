@@ -68,6 +68,8 @@ def send_new_transaction(*args):
         response_ = wallet.post_tx_slate(address, init_tx_slate)
 
         if response_:
+            wallet_instance.last_transaction = transaction
+            wallet_instance.save()
             response = utils.response(SUCCESS, 'post tx success', {'tx_slate_id': transaction.tx_slate_id})
         else:
             response = utils.response(ERROR, f'post tx failed')
@@ -184,7 +186,7 @@ def finalize_transaction(*args):
 
 def cancel_transaction(*args):
     logger.info(f">> start working on task cancel_transaction {get_current_job().id}")
-    transaction, wallet_instance = [pickle.loads(v) for v in args]
+    transaction, wallet_instance, connection = [pickle.loads(v) for v in args]
     tx_slate_id = str(transaction.tx_slate_id)
 
     # Initialize Wallet class from PythonSDK
@@ -208,5 +210,10 @@ def cancel_transaction(*args):
     transaction.archived = True
     transaction.status = 'cancelled'
     transaction.save()
+
+    # Update receiver lock status in database
+    ip, addr = connection
+    ip.is_now_locked()
+    addr.is_now_locked()
 
     return utils.response(SUCCESS, 'transaction canceled')

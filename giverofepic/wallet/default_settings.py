@@ -9,4 +9,4 @@ EPICBOX_DOMAIN = 'epicpost.stackwallet.com'
 EPICBOX_PORT = 0
 
 SECRETS_PATH_PREFIX = 'Wallets/'
-WALLETS = ['faucet_1']
+WALLETS = ['faucet_1', 'faucet_2']
