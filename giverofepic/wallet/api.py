@@ -18,7 +18,8 @@ api = NinjaAPI()
 logger = get_logger()
 
 # TODO: Initialize wallets via `setup_wallet.py`
-from . import setup_wallet
+try: from . import setup_wallet
+except Exception: logger.error(">> CAN'T INITIALIZE WALLETS, DATABASE ERRORS")
 
 
 """Initialize Redis for managing task"""
@@ -45,7 +46,7 @@ async def initialize_transaction(request, payload: PayloadSchema):
     if tx_args['error']: return tx_args
 
     # """ AUTHORIZE CONNECTION WITH TIME-LOCK FUNCTION """ #
-    ip, address = await connection_details(request, payload.address)
+    ip, address = await sync_to_async(connection_details)(request, payload.address)
     authorized = await sync_to_async(connection_authorized)(ip, address)
     if authorized['error']: return authorized
 
@@ -80,7 +81,7 @@ async def finalize_transaction(request, tx_slate_id: str, address: str):
     try:
         # We have to get transaction and wallet instance objects
         wallet_instance, transaction = await WalletManager().get_wallet_by_tx(tx_slate_id=tx_slate_id)
-        connection = await connection_details(request, address)
+        connection = await sync_to_async(connection_details)(request, address)
 
         if not transaction:
             return utils.response(ERROR, 'Transaction with given id does not exists')
@@ -108,7 +109,7 @@ async def cancel_transaction(request, tx_slate_id: str, address: str):
     try:
         # We have to get transaction and wallet instance objects
         wallet_instance, transaction = await WalletManager().get_wallet_by_tx(tx_slate_id=tx_slate_id)
-        connection = await connection_details(request, address)
+        connection = await sync_to_async(connection_details)(request, address)
 
         if not transaction:
             return utils.response(ERROR, 'Transaction with given id does not exists')
@@ -118,6 +119,33 @@ async def cancel_transaction(request, tx_slate_id: str, address: str):
         args = tuple(pickle.dumps(v) for v in [transaction, wallet_instance, connection])
         queue = Queue(wallet_instance.name, default_timeout=800, connection=redis_conn)
         queue.enqueue(tasks.cancel_transaction, job_id=job_id, args=args)
+
+        return utils.response(SUCCESS, 'task successfully enqueued', {'task_id': job_id, 'queue_len': queue.count})
+
+    except Exception as e:
+        print(e)
+        return utils.response(ERROR, 'cancel_transaction task failed')
+
+
+@api.get("/check_wallet_transactions/wallet_name={wallet_name}")
+def check_wallet_transactions(request, wallet_name: str):
+    """
+    :param request:
+    :param wallet_name:
+    :return:
+    """
+    try:
+        # We have to get transaction and wallet instance objects
+        wallet_instance = async_to_sync(WalletManager().get_wallet(name=wallet_name)).awaitable
+
+        if not wallet_instance:
+            return utils.response(ERROR, 'Wallet with given name does not exists')
+
+        # """ PREPARE TASK TO ENQUEUE """ #
+        job_id = str(uuid.uuid4())
+        args = tuple(pickle.dumps(v) for v in [wallet_instance])
+        queue = Queue(wallet_instance.name, default_timeout=800, connection=redis_conn)
+        queue.enqueue(tasks.check_wallet_transactions, job_id=job_id, args=args)
 
         return utils.response(SUCCESS, 'task successfully enqueued', {'task_id': job_id, 'queue_len': queue.count})
 

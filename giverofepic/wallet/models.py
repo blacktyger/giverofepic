@@ -46,8 +46,8 @@ class WalletState(models.Model):
         self.is_locked = False
         self.save()
 
-    def get_transactions(self):
-        return Transaction.objects.filter(wallet_instance=self)
+    def get_transactions(self, archived: bool = False):
+        return Transaction.objects.filter(wallet_instance=self, archived=archived)
 
     def update_balance(self, balance: dict):
         self.last_balance = balance
@@ -174,20 +174,20 @@ class IPAddress(Address):
     def __str__(self):
         return f"IPAddress(is_locked='{self.is_locked}', address='{self.address}')"
 
-async def connection_details(request, addr, update: bool = False):
-    address, created = await WalletAddress.objects.aget_or_create(address=addr)
+def connection_details(request, addr, update: bool = False):
+    address, created = WalletAddress.objects.get_or_create(address=addr)
     address.last_activity = timezone.now()
 
     ip, is_routable = get_client_ip(request)
     if ip:
-        ip, created = await IPAddress.objects.aget_or_create(address=ip)
+        ip, created = IPAddress.objects.get_or_create(address=ip)
         ip.last_activity = timezone.now()
 
-    if update: await update_connection_details(ip, address)
+    if update: update_connection_details(ip, address)
 
     return ip, address
 
-async def update_connection_details(ip, address):
+def update_connection_details(ip, address):
     ip.last_success_tx = timezone.now()
     ip.save()
     address.last_success_tx = timezone.now()
