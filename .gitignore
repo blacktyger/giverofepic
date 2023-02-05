@@ -21,3 +21,7 @@ giverofepic/db.sqlite3
 */*/__pycache__/
 */*/*/__pycache__/
 /dev_notes.md
+/giverofepic/faucet/migrations/
+/giverofepic/faucet/migrations/__pycache__/
+/giverofepic/faucet/__pycache__/
+

@@ -1,7 +1,6 @@
 """Utils for `wallet` app"""
 import passpy
 
-
 storage = passpy.store.Store(gpg_bin='/usr/bin/gpg')
 
 

@@ -9,7 +9,6 @@ class CancelTransaction(Schema):
 
 class PayloadSchema(Schema):
     address: str
-    api_key: str
     amount: float
     wallet_type: str
 

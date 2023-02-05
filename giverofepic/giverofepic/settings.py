@@ -30,8 +30,12 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'ninja_apikey',
     'django_rq',
+    'hitcount',
     'website',
+    'captcha',
+    'faucet',
     'wallet',
     ]
 
@@ -46,6 +50,9 @@ RQ_QUEUES = {
 
 X_FRAME_OPTIONS = "SAMEORIGIN"
 SILENCED_SYSTEM_CHECKS = ["security.W019"]
+RECAPTCHA_PUBLIC_KEY = 'MyRecaptchaKey123'
+RECAPTCHA_PRIVATE_KEY = 'MyRecaptchaPrivateKey456'
+RECAPTCHA_REQUIRED_SCORE = 0.85
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

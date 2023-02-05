@@ -4,26 +4,18 @@ let addressIcon = $('.addressIcon')
 let address = $('#walletAddress')
 
 let wallet_type = 'faucet'
-let apiKey = 'giver_admin.GdlRKGX5'
+let apiKey = 'blacktyger.test_api_key'
 
 const spinnerHTMLsm = `<div class="spinner-border spinner-border-sm fs-6" role="status"></div>`
 const spinnerHTML = `<div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>
                      <div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>
                      <div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>`
 
-// READ URL PARAMETERS
-const queryString = window.location.search;
-console.log(queryString);
-const urlParams = new URLSearchParams(queryString);
-const giveaway = urlParams.get('giveaway')
-console.log(giveaway);
-console.log(urlParams.has('giveaway'));
-
 // PROCESS USER REQUEST
 async function sendTransaction() {
     let taskFinished = false
     let amount = 0.01
-    let query = "api/initialize_transaction"
+    let query = "api/wallet/request_transaction"
     let body = {
         address: address.val(),
         amount: amount,
@@ -323,7 +315,7 @@ function finalizeTransaction(tx_slate_id) {
 
 // CANCEL TRANSACTION
 function cancelTransaction(tx_slate_id) {
-    let query = `/api/cancel_transaction/tx_slate_id=${tx_slate_id}&address=${address.val()}`
+    let query = `/api/wallet/cancel_transaction/tx_slate_id=${tx_slate_id}}`
 
     return fetch(query, {
         method: 'GET',

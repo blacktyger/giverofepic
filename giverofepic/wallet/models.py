@@ -1,20 +1,43 @@
-from datetime import datetime, timedelta
+import pickle
+import threading
+
+from asgiref.sync import sync_to_async
+from datetime import datetime
 import decimal
 import json
 import time
 import uuid
 
-from asgiref.sync import async_to_sync, sync_to_async
-from django.utils import timezone
+from ninja_apikey.security import APIKeyAuth, check_apikey
 from django.contrib import admin
-from ipware import get_client_ip
 from django.db.models import Q
 from django.db import models
-import humanfriendly
+from rq import Queue, Retry
+import django_rq
 
+from faucet.models import Client
 from wallet.default_settings import *
-from wallet.epic_sdk import utils
-from wallet import get_short
+from wallet.epic_sdk import utils, Wallet
+from wallet import get_short, get_secret_value
+from wallet.epic_sdk.utils import get_logger
+
+
+logger = get_logger()
+
+
+class CustomAPIKeyAuth(APIKeyAuth):
+    """Custom API async auth"""
+    param_name = "X-API-Key"
+
+    @sync_to_async
+    def authenticate(self, request, key):
+        user = sync_to_async(check_apikey)(key)
+
+        if not user:
+            return False
+
+        request.user = user
+        return user
 
 
 class WalletState(models.Model):
@@ -30,11 +53,14 @@ class WalletState(models.Model):
 
     # Managed by script, read only
     is_locked = models.BooleanField(default=False)
+    is_listening = models.BooleanField(default=False)
     last_balance = models.JSONField(default=dict, null=True, blank=True)
     last_spendable = models.DecimalField(max_digits=16, decimal_places=3, null=True, default=0)
     last_transaction = models.ForeignKey('Transaction', on_delete=models.SET_NULL, blank=True, null=True)
 
     # Editable for users in admin panel
+    disabled = models.BooleanField(default=True,
+                                   help_text="Disable wallet instance and it's processes, use with caution")
     description = models.TextField(blank=True, default='Wallet instance used by faucet web-app.')
     default_amount = models.DecimalField(max_digits=16, decimal_places=3, default=0.01)
 
@@ -46,8 +72,15 @@ class WalletState(models.Model):
         self.is_locked = False
         self.save()
 
-    def get_transactions(self, archived: bool = False):
-        return Transaction.objects.filter(wallet_instance=self, archived=archived)
+    def get_pending_transactions(self):
+        return Transaction.objects.filter(wallet_instance=self, archived=False)
+
+    def get_wallet_history(self, fetch_cancelled=False):
+        if not fetch_cancelled:
+            filter_ = Q(wallet_instance=self) and not Q(status="cancelled")
+        else:
+            filter_ = Q(wallet_instance=self)
+        return Transaction.objects.filter(filter_)
 
     def update_balance(self, balance: dict):
         self.last_balance = balance
@@ -58,7 +91,8 @@ class WalletState(models.Model):
         return f"WalletState(name='{self.name}', dir='{self.wallet_dir})"
 
     def __str__(self):
-        return f"[{self.name} wallet] {get_short(self.address)} | {self.last_spendable} EPIC"
+        return f"{str('[DISABLED] ') if self.disabled else ''}" \
+               f"[{self.name} wallet] {get_short(self.address)} | {self.last_spendable} EPIC"
 
 
 @admin.register(WalletState)
@@ -105,8 +139,6 @@ class Transaction(models.Model):
         db_tx, network_slate = json.loads(slate_string)
         args = json.loads(db_tx)[0]
 
-        print(args)
-
         response = {
             "receiver_address": address,
             "wallet_db_id": args['id'],
@@ -137,113 +169,130 @@ class Transaction(models.Model):
                f"{get_short(self.receiver_address)})"
 
 
-class Address(models.Model):
-    """Base class for authorization incoming transaction requests."""
-    address = models.CharField(max_length=256)
-    is_banned = models.BooleanField(default=False)
-    is_locked = models.BooleanField(default=False)
-    last_activity = models.DateTimeField(auto_now_add=True)
-    last_success_tx = models.DateTimeField(null=True, blank=True)
-
-    def locked_for(self):
-        if not self.last_success_tx or not self.is_locked:
-            return 0
-        else:
-            return self.last_success_tx + timedelta(minutes=1) - timezone.now()
-
-    def locked_msg(self):
-        return f'You have reached your limit, try again in ' \
-               f'<b>{humanfriendly.format_timespan(self.locked_for().seconds)}</b>.'
-
-    def is_now_locked(self):
-        if not self.last_success_tx:
-            self.is_locked = False
-        else:
-            self.is_locked = (timezone.now() - self.last_success_tx) < timedelta(minutes=1)
-
-        self.save()
-        return self.is_locked
-
-
-class WalletAddress(Address):
-    def __str__(self):
-        return f"WalletAddress(is_locked='{self.is_locked}', address='{get_short(self.address)}')"
-
-
-class IPAddress(Address):
-    def __str__(self):
-        return f"IPAddress(is_locked='{self.is_locked}', address='{self.address}')"
-
-def connection_details(request, addr, update: bool = False):
-    address, created = WalletAddress.objects.get_or_create(address=addr)
-    address.last_activity = timezone.now()
-
-    ip, is_routable = get_client_ip(request)
-    if ip:
-        ip, created = IPAddress.objects.get_or_create(address=ip)
-        ip.last_activity = timezone.now()
-
-    if update: update_connection_details(ip, address)
-
-    return ip, address
-
-def update_connection_details(ip, address):
-    ip.last_success_tx = timezone.now()
-    ip.save()
-    address.last_success_tx = timezone.now()
-    address.save()
-
-    return ip, address
-
-
-def connection_authorized(ip, address):
-    if ip.is_now_locked():
-        return utils.response(ERROR, ip.locked_msg())
-
-    if address.is_now_locked():
-        return utils.response(ERROR, address.locked_msg())
-
-    return utils.response(SUCCESS, 'authorized')
-
-
 class WalletManager:
     """ Helper class to manage multiple wallet instances"""
     wallets = WalletState.objects
     transactions = Transaction.objects
 
+    """Initialize Redis for managing task"""
+    redis_conn = django_rq.get_connection('default')
+
+    def __init__(self):
+        self.slate_listener = None
+
+        try:
+            wallet_instances = WalletState.objects.all().count()
+            if wallet_instances < 1:
+                logger.warning(">> NO WALLET INSTANCES AVAILABLE, INITIALIZE DEFAULT")
+                self._init_default()
+            else:
+                logger.info(f">> {wallet_instances} WALLET INSTANCES AVAILABLE")
+        except Exception as e:
+            logger.error(f">> CAN'T INITIALIZE WALLETS, DATABASE ERRORS \n {str(e)}")
+
+    def _init_default(self):
+        for wallet_name in WALLETS:
+            logger.info(f">> Initialize {wallet_name} wallet..")
+
+            # Get secret values stored and encrypted on the server
+            password_path = f"{SECRETS_PATH_PREFIX}/{wallet_name}/password"
+            wallet_dir = f"{SECRETS_PATH_PREFIX}/{wallet_name}/dir"
+
+            # Get or create instance from local database
+            wallet_instance, _ = WalletState.objects.get_or_create(
+                name=wallet_name,
+                wallet_dir=get_secret_value(wallet_dir),
+                password_path=password_path
+                )
+
+            # Initialize Wallet class from PythonSDK
+            wallet = Wallet(
+                wallet_dir=wallet_instance.wallet_dir,
+                password=get_secret_value(wallet_instance.password_path)
+                )
+            wallet_instance.address = wallet.epicbox.address
+            wallet_instance.save()
+
+            # Initialize queue and run redis worker to consume this instance tasks
+            queue = Queue(wallet_name, default_timeout=800, connection=self.redis_conn)
+
+            # SPAWNING REDIS WORKER WITHIN SCRIPT, NOT SURE A GOOD IDEA
+            # if not Worker.find_by_key(worker_key=f"rq:worker:{wallet_name}_worker", connection=redis_conn):
+            #     worker = Worker([queue], connection=redis_conn, name=f"{wallet_name}_worker")
+            #     process = multiprocessing.Process(target=worker.work, kwargs={'with_scheduler': True})
+            #     process.start()
+            #     # logger.info(f">> Worker {worker.name} running ({worker.get_state()})")
+            # else:
+            #     worker = Worker.find_by_key(worker_key=f"rq:worker:{wallet_name}_worker", connection=redis_conn)
+            #     try: worker.work()
+            #     except Exception: pass
+            #     logger.info(f">> Worker {worker.name} running ({worker.get_state()})")
+            # ===========================================================
+
+    def _run_listener(self):
+        while self.slate_listener:
+            self.get_pending_slates()
+            time.sleep(5)
+
+    def run_listener(self):
+        logger.info(f">> Starting slate_listener thread..")
+        self.slate_listener = threading.Thread(target=self._run_listener)
+        self.slate_listener.start()
+
+    def get_pending_slates(self):
+        # Get active wallet instances
+        filter_ = Q(disabled=False) and Q(is_listening=True)
+
+        for wallet_instance in self.wallets.filter(filter_):
+
+            logger.info(">> Getting pending transactions from local database..")
+            pending_transactions = wallet_instance.get_pending_transactions()
+
+            # Ignore if there is no pending transactions in local database (save requests)
+            if not pending_transactions.filter(status='initialized').count():
+                logger.info(">> No new pending transactions")
+                continue
+
+            # """ PREPARE TASK TO ENQUEUE """ #
+            client = Client(request, payload.address)
+            job_id = str(uuid.uuid4())
+            args = tuple(pickle.dumps(v) for v in [pending_transactions, wallet_instance])
+            queue = Queue(wallet_instance.name, default_timeout=800, connection=self.redis_conn)
+            queue.enqueue('wallet.tasks.finalize_transactions', job_id=job_id, args=args)
+
     def get_wallet(self, state_id: str = None, name: str = None):
         """Get wallet instance from database by name, id or transaction id"""
         if state_id or name:
-            filter_ = Q(id=state_id) | Q(name=name)
+            filter_ = Q(diabled=False) and (Q(id=state_id) | Q(name=name))
             return self.wallets.filter(filter_).first()
 
-    async def get_wallet_by_tx(self, tx_slate_id: str):
+    def get_wallet_by_tx(self, tx_slate_id: str):
         """Get transaction by slate id and return tuple (wallet, transaction)"""
         filter_ = Q(tx_slate_id=tx_slate_id)
-        tx = await self.transactions.filter(filter_).afirst()
+        tx = self.transactions.filter(filter_).first()
         if tx:
             # return await self.transactions.select_related('wallet').aget()
-            return await sync_to_async(lambda: tx.wallet_instance)(), tx
+            return tx.wallet_instance, tx
         else:
             return None, None
 
-    async def get_available_wallet(self, wallet_type: str = 'faucet'):
+    def get_available_wallet(self, wallet_type: str = 'faucet'):
         """Get available (not locked, ready to work) wallet instance"""
-        filter_ = Q(name__startswith=wallet_type)
+        filter_ = Q(diabled=False) and Q(name__startswith=wallet_type)
         try_num = NUM_OF_ATTEMPTS
         available_wallet = None
 
         while not available_wallet and try_num:
-            print(f">> {await self.wallets.filter(filter_).acount()} '{wallet_type}' wallets")
+            logger.info(f">> {self.wallets.filter(filter_).count()} '{wallet_type}' wallets")
 
-            async for wallet in self.wallets.filter(filter_):
+            for wallet in self.wallets.filter(filter_):
                 if not wallet.is_locked:
                     available_wallet = wallet
                     break
             if not available_wallet:
                 try_num -= 1
-                print(f">> No wallet available, {try_num} attempts left")
+                logger.info(f">> No wallet available, {try_num} attempts left")
                 time.sleep(ATTEMPTS_INTERVAL)
 
-        print(f">> Available wallet: {available_wallet}")
+        logger.info(f">> Available wallet: {available_wallet}")
         return available_wallet

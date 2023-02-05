@@ -1,13 +1,11 @@
+from datetime import timedelta
 import pickle
 import json
-import sys
-import os
 import time
-from datetime import timedelta
+import os
 
-from asgiref.sync import async_to_sync
-from django.db.models import Q
 from django.utils import timezone
+from django.db.models import Q
 from rq import get_current_job
 import django_rq
 import django
@@ -16,15 +14,16 @@ import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "giverofepic.settings")
 django.setup()
 
-from .models import Transaction, update_connection_details, WalletManager
 from .default_settings import SUCCESS, ERROR
 from .epic_sdk import Wallet, utils
+from .models import Transaction
 from .logger_ import get_logger
 from . import get_secret_value
 
 
 """Initialize Logger"""
 logger = get_logger()
+
 
 """Initialize Queue for managing task"""
 redis_conn = django_rq.get_connection('default')
@@ -34,8 +33,7 @@ def send_new_transaction(*args):
     this_task = get_current_job()
     logger.info(f">> start working on task send_new_transaction {this_task.id}")
 
-    amount, address, wallet_instance = [pickle.loads(v) for v in args]
-    print(amount, address, wallet_instance)
+    amount, address, wallet_instance, client = [pickle.loads(v) for v in args]
     wallet_instance.lock()  # Lock the wallet instance
 
     # Initialize Wallet class from PythonSDK
@@ -75,33 +73,43 @@ def send_new_transaction(*args):
         if response_:
             wallet_instance.last_transaction = transaction
             wallet_instance.save()
+            client.update_activity(status="transaction initialized successfully")
             response = utils.response(SUCCESS, 'post tx success', {'tx_slate_id': transaction.tx_slate_id})
         else:
+            client.update_activity(status="transaction failed (initialize stage)")
             response = utils.response(ERROR, f'post tx failed')
 
     except Exception as e:
         wallet.cancel_tx_slate(slate=init_tx_slate)
+        client.update_activity(status="transaction failed (initialize stage)")
         response = utils.response(ERROR, f"post tx failed and canceled, {str(e)}")
 
     wallet_instance.unlock()  # Release wallet
     return response
 
 
-def finalize_transaction(*args):
-    logger.info(f">> start working on task finalize_transaction {get_current_job().id}")
-    sys.tracebacklimit = 1
-    processed = False
+def finalize_transactions(*args):
+    logger.info(f">> start working on task finalize_transactions {get_current_job().id}")
+    to_finalize = []
+    to_process = []
+    to_post = []
 
-    tx_, wallet_instance, connection = [pickle.loads(v) for v in args]
-    tx_slate_id = str(tx_.tx_slate_id)
+    # Unpickle args
+    pending_transactions, wallet_instance, client = [pickle.loads(v) for v in args]
+    pending_transactions_ids = [str(tx.tx_slate_id) for tx in pending_transactions]
 
     # Initialize Wallet class from PythonSDK
     wallet = Wallet(
         wallet_dir=wallet_instance.wallet_dir,
         password=get_secret_value(wallet_instance.password_path))
 
-    logger.info(">> Getting unprocessed slates from epic-box server..")
+    logger.info(f">> Getting unprocessed slates for '{wallet_instance.name}' from epic-box server..")
     encrypted_slates = wallet.get_tx_slates()
+
+    # Finish if there is no new slates available
+    if len(encrypted_slates) < 1:
+        logger.warning('No new encrypted_slates available on the epicbox server')
+        return
 
     logger.info(f">> Start decrypting {len(encrypted_slates)} slates")
     for encrypted_string in encrypted_slates:
@@ -110,47 +118,67 @@ def finalize_transaction(*args):
         db_tx, network_slate = json.loads(slate_string)
         decrypted_slate_id = json.loads(db_tx)[0]['tx_slate_id']
 
-        # Confirm that requested transaction id is received
-        print(decrypted_slate_id, tx_slate_id)
-        if decrypted_slate_id in tx_slate_id:
+        # Match decrypted slate id with pending transaction in local db
+        if decrypted_slate_id in pending_transactions_ids:
+            # Get and update transaction object
+            tx_ = pending_transactions.get(tx_slate_id=decrypted_slate_id)
             tx_.encrypted_slate = encrypted_string
             tx_.save()
 
-            # Process slate
-            logger.info(f">> Start processing {tx_}")
-            processed = wallet.process_tx_slates([json.loads(slate_string)])
+            # Update local queryset (remove processed slate)
+            pending_transactions = pending_transactions.exclude(tx_slate_id=decrypted_slate_id)
 
-    if not processed:
-        sys.tracebacklimit = 0
-        wallet_instance.unlock()  # Release the wallet
-        raise Exception('requested tx not found, re-try') from None
+            # Append to further processing
+            to_finalize.append(tx_)
+            to_process.append(json.loads(slate_string))
 
-    tx_.status = 'finalized'
-    tx_.save()
+    if not to_process:
+        logger.warning('Decrypted slates from epicbox server are not present in the local database')
+        return
 
-    # Post finalized transaction to the node (network)
-    logger.info(f">>Sending {tx_} to network..")
-    post_tx = wallet.post_transaction(tx_slate_id=str(tx_.tx_slate_id))
+    if len(pending_transactions) > 0:
+        logger.warning(f'{len(pending_transactions)} Pending local transactions are not in the epicbox server')
 
-    if post_tx:
-        tx_.status = 'finished'
-        logger.info(f">> {tx_} finished successfully")
-        # Update connection timestamps for time-lock function
-        logger.info(f">> {update_connection_details(*connection)}")
-    else:
-        tx_.status = 'cancelled'
-        logger.info(f">> {tx_} failed to post (cancelled)")
+    # Process the matching encrypted slates in the wallet instance
+    logger.info(f">> Start processing {len(to_process)} slates..")
+    wallet.process_tx_slates(to_process)
 
-    tx_.archived = True
-    tx_.save()
+    # Update transactions object and append to posting list
+    for tx_ in to_finalize:
+        tx_.status = 'finalized'
+        tx_.save()
+        to_post.append(tx_)
+
+    # Post finalized transaction slate to the node (network)
+    for transaction in to_post:
+        logger.info(f">> Sending {transaction} to the network..")
+        post_tx = wallet.post_transaction(tx_slate_id=str(transaction.tx_slate_id))
+
+        if post_tx:
+            transaction.status = 'finished'
+            logger.info(f">> {transaction} finished successfully")
+            # TODO:  Update connection timestamps for time-lock function
+            # logger.info(f">> {update_connection_details(*connection)}")
+        else:
+            transaction.status = 'cancelled'
+            logger.info(f">> {transaction} failed to post (cancelled)")
+
+        transaction.archived = True
+        transaction.save()
+
     wallet_instance.unlock()  # Release the wallet instance
-    message = {"is_requested_tx": True}
-    return utils.response(SUCCESS, str(message), message)
-
+    print(f"======================"
+          f"=== UPDATE  REPORT ==="
+          f"\npending_transactions: {len(pending_transactions)}"
+          f"\nencrypted_slates: {len(encrypted_slates)}"
+          f"\nto_process: {len(to_process)}"
+          f"\nto_finalize: {len(to_finalize)}"
+          f"\nto_post: {len(to_post)}"
+          f"======================")
 
 def cancel_transaction(*args):
     logger.info(f">> start working on task cancel_transaction {get_current_job().id}")
-    transaction, wallet_instance, connection = [pickle.loads(v) for v in args]
+    transaction, wallet_instance, client = [pickle.loads(v) for v in args]
     tx_slate_id = str(transaction.tx_slate_id)
 
     # Initialize Wallet class from PythonSDK
@@ -176,10 +204,7 @@ def cancel_transaction(*args):
     transaction.save()
 
     # Update receiver lock status in database
-    ip, addr = connection
-    ip.is_now_locked()
-    addr.is_now_locked()
-
+    client.update_activity(status="transaction failed (cancelled)")
     return utils.response(SUCCESS, 'transaction canceled')
 
 
@@ -200,7 +225,7 @@ def check_wallet_transactions(*args):
     w_addr = wallet.epicbox.address
 
     logger.info(f">> [{wallet_instance.name}]: Getting slates from local database..")
-    db_txs = wallet_instance.get_transactions()
+    pending_db_txs = wallet_instance.get_pending_transactions()
 
     logger.info(f">> [{wallet_instance.name}]: Decrypting {len(encrypted_slates)} slates..")
     for encrypted_string in encrypted_slates:
@@ -209,7 +234,7 @@ def check_wallet_transactions(*args):
         db_tx, network_slate = json.loads(slate_string)
         decrypted_slate_id = json.loads(db_tx)[0]['tx_slate_id']
 
-        tx_ = db_txs.filter(tx_slate_id=decrypted_slate_id).first()
+        tx_ = pending_db_txs.filter(tx_slate_id=decrypted_slate_id).first()
 
         # If transaction is not in local db, delete it from epicbox
         if not tx_:
@@ -246,7 +271,7 @@ def check_wallet_transactions(*args):
     wallet_instance.unlock()  # Release the wallet instance
 
     # LOG WALLET'S TRANSACTION REPORT
-    txs = wallet_instance.get_transactions()
+    txs = wallet_instance.get_pending_transactions()
 
     for tx in txs:
         print(tx)
@@ -260,7 +285,7 @@ def check_wallet_transactions(*args):
     report = {
         "slates_received": len(encrypted_slates),
         "slates_decrypted": decrypted_slates,
-        "unfinished_transactions": wallet_instance.get_transactions().filter(Q(status='initialized') | Q(status='finalized')).count()
+        "unfinished_transactions": wallet_instance.get_pending_transactions().filter(Q(status='initialized') | Q(status='finalized')).count()
         }
 
     print(report)
