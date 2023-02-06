@@ -1,7 +1,6 @@
 from datetime import timedelta
 import pickle
 import json
-import time
 import os
 
 from django.utils import timezone
@@ -11,11 +10,13 @@ import django_rq
 import django
 
 # Must be called before imports from Django components
+
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "giverofepic.settings")
 django.setup()
 
-from .default_settings import SUCCESS, ERROR
+from .default_settings import SUCCESS, ERROR, MINIMUM_CONFIRMATIONS, DELETE_AFTER_MINUTES
 from .epic_sdk import Wallet, utils
+from faucet.models import Client
 from .models import Transaction
 from .logger_ import get_logger
 from . import get_secret_value
@@ -55,14 +56,14 @@ def send_new_transaction(*args):
 
     # """ START CREATING NEW TRANSACTION """ #
     ## >> Create TX slate
-    init_tx_slate = wallet.create_tx_slate(amount=amount)
+    init_tx_slate = wallet.create_tx_slate(amount=amount, min_confirmations=MINIMUM_CONFIRMATIONS)
 
-    ## >> Parse tx_args and prepare transaction slate
     try:
+        ## >> Parse tx_args and prepare transaction slate
         tx_args = Transaction.parse_init_slate(init_tx_slate)
-        tx_args['receiver_address'] = address
-        tx_args['wallet_instance'] = wallet_instance
-        tx_args['sender_address'] = wallet.epicbox.address
+        tx_args['sender'] = wallet_instance
+        tx_args['receiver'] = client.receiver
+        tx_args['initial_slate'] = init_tx_slate
         tx_args['status'] = "initialized"
         tx_args['amount'] = amount
 
@@ -73,16 +74,20 @@ def send_new_transaction(*args):
         if response_:
             wallet_instance.last_transaction = transaction
             wallet_instance.save()
-            client.update_activity(status="transaction initialized successfully")
+            client.update_activity(status=transaction.status)
             response = utils.response(SUCCESS, 'post tx success', {'tx_slate_id': transaction.tx_slate_id})
+            logger.info(response)
         else:
             client.update_activity(status="transaction failed (initialize stage)")
+            transaction.remove_client_data()
             response = utils.response(ERROR, f'post tx failed')
+            logger.error(response)
 
     except Exception as e:
         wallet.cancel_tx_slate(slate=init_tx_slate)
         client.update_activity(status="transaction failed (initialize stage)")
         response = utils.response(ERROR, f"post tx failed and canceled, {str(e)}")
+        logger.error(response)
 
     wallet_instance.unlock()  # Release wallet
     return response
@@ -95,10 +100,13 @@ def finalize_transactions(*args):
     to_post = []
 
     # Unpickle args
-    pending_transactions, wallet_instance, client = [pickle.loads(v) for v in args]
+    pending_transactions = [pickle.loads(v) for v in args][0]
     pending_transactions_ids = [str(tx.tx_slate_id) for tx in pending_transactions]
 
-    # Initialize Wallet class from PythonSDK
+    # Initialize Wallet class from PythonSDK and Client
+    wallet_instance = pending_transactions[0].sender
+    client = Client.from_receiver(pending_transactions[0].receiver)
+
     wallet = Wallet(
         wallet_dir=wallet_instance.wallet_dir,
         password=get_secret_value(wallet_instance.password_path))
@@ -158,30 +166,33 @@ def finalize_transactions(*args):
             transaction.status = 'finished'
             logger.info(f">> {transaction} finished successfully")
             # TODO:  Update connection timestamps for time-lock function
-            # logger.info(f">> {update_connection_details(*connection)}")
         else:
             transaction.status = 'cancelled'
             logger.info(f">> {transaction} failed to post (cancelled)")
 
+        logger.info(f">> {client.update_activity(status=transaction.status)}")
+        transaction.remove_client_data()
         transaction.archived = True
         transaction.save()
 
     wallet_instance.unlock()  # Release the wallet instance
     print(f"======================"
-          f"=== UPDATE  REPORT ==="
+          f"\n=== UPDATE  REPORT ==="
           f"\npending_transactions: {len(pending_transactions)}"
           f"\nencrypted_slates: {len(encrypted_slates)}"
           f"\nto_process: {len(to_process)}"
           f"\nto_finalize: {len(to_finalize)}"
           f"\nto_post: {len(to_post)}"
-          f"======================")
+          f"\n======================")
 
-def cancel_transaction(*args):
+def cancel_transaction(tx):
     logger.info(f">> start working on task cancel_transaction {get_current_job().id}")
-    transaction, wallet_instance, client = [pickle.loads(v) for v in args]
+    transaction = pickle.loads(tx)
+    wallet_instance = transaction.sender
     tx_slate_id = str(transaction.tx_slate_id)
 
-    # Initialize Wallet class from PythonSDK
+    # Initialize Wallet class from PythonSDK and Client
+    client = Client.from_receiver(transaction.receiver)
     wallet = Wallet(
         wallet_dir=wallet_instance.wallet_dir,
         password=get_secret_value(wallet_instance.password_path))
@@ -189,14 +200,13 @@ def cancel_transaction(*args):
 
     # Cancel in local wallet history
     logger.info(f"Local wallet transaction: {wallet.cancel_tx_slate(tx_slate_id=tx_slate_id)}")
-    wallet.post_delete_tx_slate(receiving_address=transaction.sender_address, slate=transaction.encrypted_slate)
+    wallet.post_delete_tx_slate(receiving_address=transaction.sender.address, slate=transaction.encrypted_slate)
 
     # Cancel in epic-box server
     cancel = wallet.post_cancel_transaction(
-        receiving_address=transaction.receiver_address,
+        receiving_address=transaction.receiver.address,
         tx_slate_id=tx_slate_id)
-    logger.info(f"Epicbox slate canceled: "
-                f"{cancel['status'] if 'status' in cancel else 'failed'}")
+    logger.info(f"Epicbox slate canceled: {cancel['status'] if 'status' in cancel else 'failed'}")
 
     wallet_instance.unlock()  # Release wallet
     transaction.archived = True
@@ -204,21 +214,21 @@ def cancel_transaction(*args):
     transaction.save()
 
     # Update receiver lock status in database
-    client.update_activity(status="transaction failed (cancelled)")
+    client.update_activity(status=transaction.status)
+    transaction.remove_client_data()
     return utils.response(SUCCESS, 'transaction canceled')
 
 
-def check_wallet_transactions(*args):
+def rescan_and_clean_transactions(wallet):
     logger.info(f">> start working on task check_wallet_transactions {get_current_job().id}")
-    wallet_instance = [pickle.loads(v) for v in args][0]
+    wallet_instance = pickle.loads(wallet)
+    decrypted_slates = 0
 
     # Initialize Wallet class from PythonSDK
     wallet = Wallet(
         wallet_dir=wallet_instance.wallet_dir,
         password=get_secret_value(wallet_instance.password_path))
     wallet_instance.lock()  # Lock the wallet instance
-
-    decrypted_slates = 0
 
     logger.info(f">> [{wallet_instance.name}]: Getting unprocessed slates from epic-box server..")
     encrypted_slates = wallet.get_tx_slates()
@@ -233,7 +243,6 @@ def check_wallet_transactions(*args):
         slate_string, address = decrypted_slate
         db_tx, network_slate = json.loads(slate_string)
         decrypted_slate_id = json.loads(db_tx)[0]['tx_slate_id']
-
         tx_ = pending_db_txs.filter(tx_slate_id=decrypted_slate_id).first()
 
         # If transaction is not in local db, delete it from epicbox
@@ -246,10 +255,10 @@ def check_wallet_transactions(*args):
         # If transaction is in local db match status
         match tx_.status:
             case 'initialized':
-                if (timezone.now() - tx_.timestamp) > timedelta(minutes=5):
+                if (timezone.now() - tx_.timestamp) > timedelta(minutes=DELETE_AFTER_MINUTES):
                     logger.info(f">> {tx_} old initialized tx, cleaning it up..")
                     logger.info(wallet.post_delete_tx_slate(receiving_address=w_addr, slate=encrypted_string))
-                    logger.info(wallet.post_cancel_transaction(receiving_address=tx_.receiver_address,
+                    logger.info(wallet.post_cancel_transaction(receiving_address=tx_.receiver.address,
                                                                tx_slate_id=decrypted_slate_id))
                     tx_.archived = True
                     tx_.status = 'cancelled'
@@ -266,27 +275,16 @@ def check_wallet_transactions(*args):
         logger.info(wallet.post_delete_tx_slate(receiving_address=w_addr, slate=encrypted_string))
         decrypted_slates += 1
         tx_.save()
-        time.sleep(1)
+        tx_.remove_client_data()
 
     wallet_instance.unlock()  # Release the wallet instance
 
     # LOG WALLET'S TRANSACTION REPORT
-    txs = wallet_instance.get_pending_transactions()
-
-    for tx in txs:
-        print(tx)
-        if tx.status == 'initialized':
-            if (timezone.now() - tx.timestamp) > timedelta(minutes=5):
-                logger.info(f">> {tx} old initialized tx, cleaning it up..")
-                tx.archived = True
-                tx.status = 'cancelled'
-        tx.save()
-
     report = {
         "slates_received": len(encrypted_slates),
         "slates_decrypted": decrypted_slates,
         "unfinished_transactions": wallet_instance.get_pending_transactions().filter(Q(status='initialized') | Q(status='finalized')).count()
         }
 
-    print(report)
+    logger.info(report)
     return utils.response(SUCCESS, result=report)

@@ -1,5 +1,5 @@
-import pickle
 import threading
+import pickle
 
 from asgiref.sync import sync_to_async
 from datetime import datetime
@@ -12,32 +12,18 @@ from ninja_apikey.security import APIKeyAuth, check_apikey
 from django.contrib import admin
 from django.db.models import Q
 from django.db import models
-from rq import Queue, Retry
+from rq.job import Job
+from rq import Queue
 import django_rq
 
-from faucet.models import Client
-from wallet.default_settings import *
-from wallet.epic_sdk import utils, Wallet
 from wallet import get_short, get_secret_value
 from wallet.epic_sdk.utils import get_logger
+from faucet.models import Client, Receiver, IPAddress
+from wallet.epic_sdk import utils, Wallet
+from wallet.default_settings import *
 
 
 logger = get_logger()
-
-
-class CustomAPIKeyAuth(APIKeyAuth):
-    """Custom API async auth"""
-    param_name = "X-API-Key"
-
-    @sync_to_async
-    def authenticate(self, request, key):
-        user = sync_to_async(check_apikey)(key)
-
-        if not user:
-            return False
-
-        request.user = user
-        return user
 
 
 class WalletState(models.Model):
@@ -73,13 +59,13 @@ class WalletState(models.Model):
         self.save()
 
     def get_pending_transactions(self):
-        return Transaction.objects.filter(wallet_instance=self, archived=False)
+        return Transaction.objects.filter(sender=self, archived=False)
 
     def get_wallet_history(self, fetch_cancelled=False):
         if not fetch_cancelled:
-            filter_ = Q(wallet_instance=self) and not Q(status="cancelled")
+            filter_ = Q(sender=self) and not Q(status="cancelled")
         else:
-            filter_ = Q(wallet_instance=self)
+            filter_ = Q(sender=self)
         return Transaction.objects.filter(filter_)
 
     def update_balance(self, balance: dict):
@@ -102,10 +88,12 @@ class WalletStateAdmin(admin.ModelAdmin):
 
 
 class Transaction(models.Model):
-    wallet_instance = models.ForeignKey(WalletState, on_delete=models.SET_NULL, blank=True, null=True, related_name='wallet')
-    receiver_address = models.CharField(max_length=254)
+    sender = models.ForeignKey(WalletState, on_delete=models.SET_NULL, null=True)
+    receiver = models.ForeignKey(Receiver, on_delete=models.CASCADE)
+
+    minimum_confirmations = models.IntegerField(default=MINIMUM_CONFIRMATIONS)
     encrypted_slate = models.JSONField(blank=True, null=True)
-    sender_address = models.CharField(max_length=254)
+    initial_slate = models.JSONField(blank=True, null=True)
     wallet_db_id = models.IntegerField()
     tx_slate_id = models.UUIDField()
     timestamp = models.DateTimeField()
@@ -163,10 +151,18 @@ class Transaction(models.Model):
 
         return utils.response(SUCCESS, 'tx_args valid')
 
+    def remove_client_data(self):
+        logger.info(f"Purge client data")
+        client_data = IPAddress.objects.filter(receiver=self.receiver).first()
+        if client_data:
+            client_data.receiver = None
+            client_data.save()
+
     def __str__(self):
-        return f"Tx({self.status}, {self.timestamp.strftime('%H:%M:%S')}, " \
-               f"{self.wallet_instance.name} -> {self.amount:.2f} -> " \
-               f"{get_short(self.receiver_address)})"
+        return f"Tx({self.status}, {get_short(self.tx_slate_id, True)} | " \
+               f"{self.timestamp.strftime('%H:%M:%S')}, " \
+               f"{self.sender.name} -> {self.amount:.2f} -> " \
+               f"{self.receiver.get_short_address()})"
 
 
 class WalletManager:
@@ -254,9 +250,8 @@ class WalletManager:
                 continue
 
             # """ PREPARE TASK TO ENQUEUE """ #
-            client = Client(request, payload.address)
             job_id = str(uuid.uuid4())
-            args = tuple(pickle.dumps(v) for v in [pending_transactions, wallet_instance])
+            args = tuple(pickle.dumps(v) for v in [pending_transactions])
             queue = Queue(wallet_instance.name, default_timeout=800, connection=self.redis_conn)
             queue.enqueue('wallet.tasks.finalize_transactions', job_id=job_id, args=args)
 
@@ -268,24 +263,22 @@ class WalletManager:
 
     def get_wallet_by_tx(self, tx_slate_id: str):
         """Get transaction by slate id and return tuple (wallet, transaction)"""
-        filter_ = Q(tx_slate_id=tx_slate_id)
-        tx = self.transactions.filter(filter_).first()
+        tx = self.transactions.filter(tx_slate_id=tx_slate_id).first()
         if tx:
-            # return await self.transactions.select_related('wallet').aget()
-            return tx.wallet_instance, tx
+            return tx.sender, tx
         else:
             return None, None
 
     def get_available_wallet(self, wallet_type: str = 'faucet'):
         """Get available (not locked, ready to work) wallet instance"""
-        filter_ = Q(diabled=False) and Q(name__startswith=wallet_type)
         try_num = NUM_OF_ATTEMPTS
         available_wallet = None
 
         while not available_wallet and try_num:
-            logger.info(f">> {self.wallets.filter(filter_).count()} '{wallet_type}' wallets")
+            all_wallets = self.wallets.filter(disabled=False, name__startswith=wallet_type)
+            logger.info(f">> {all_wallets.count()} '{wallet_type}' wallets")
 
-            for wallet in self.wallets.filter(filter_):
+            for wallet in all_wallets:
                 if not wallet.is_locked:
                     available_wallet = wallet
                     break
@@ -296,3 +289,34 @@ class WalletManager:
 
         logger.info(f">> Available wallet: {available_wallet}")
         return available_wallet
+
+    def enqueue_task(self, wallet_instance: WalletState, target_func, *args, **kwargs):
+        """ PREPARE TASK TO ENQUEUE """
+        job_id = str(uuid.uuid4())
+        args_ = tuple(pickle.dumps(v) for v in args)
+        kwargs_ = {k: pickle.dumps(v) for k, v in kwargs.items()}
+
+        queue = Queue(wallet_instance.name, default_timeout=800, connection=self.redis_conn)
+        queue.enqueue(target_func, job_id=job_id, args=args_, kwargs=kwargs_)
+        return job_id, queue
+
+    def get_task(self, task_id: str):
+        task = Job.fetch(task_id, self.redis_conn)
+        message = task.meta['message'] if 'message' in task.meta else 'No message'
+        return {'status': task.get_status(), 'message': message, 'result': task.result}
+
+
+class CustomAPIKeyAuth(APIKeyAuth):
+    """Custom API async auth"""
+    param_name = "X-API-Key"
+
+    @sync_to_async
+    def authenticate(self, request, key):
+        user = sync_to_async(check_apikey)(key)
+
+        if not user:
+            logger.warning("No auth fort the request")
+            return False
+
+        request.user = user
+        return user

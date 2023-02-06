@@ -1,12 +1,10 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
+from asgiref.sync import sync_to_async
 from django.utils import timezone
 from ipware import get_client_ip
 from django.db import models
 import humanfriendly
-
-from wallet.default_settings import SUCCESS, ERROR
-from wallet.epic_sdk import utils
 
 
 class Receiver(models.Model):
@@ -30,6 +28,7 @@ class Receiver(models.Model):
         else:
             return self.last_transaction + timedelta(seconds=self.TIME_LOCK_SECONDS) - timezone.now()
 
+    @sync_to_async
     def locked_msg(self):
         return f'You have reached your limit, try again in ' \
                f'<b>{humanfriendly.format_timespan(self.locked_for().seconds)}</b>.'
@@ -42,48 +41,63 @@ class Receiver(models.Model):
         self.save()
         return self.is_locked
 
+    def __str__(self):
+        return f"Receiver({self.get_short_address()})"
 
-class IPAddress(Receiver):
+
+class IPAddress(models.Model):
     """Used to work with request IP addresses"""
+    receiver = models.ForeignKey(Receiver, on_delete=models.CASCADE, null=True, default=None, related_name="ip")
+    address = models.CharField(max_length=256, null=True, blank=True)
+
     def __str__(self):
         return f"IPAddress({self.address})"
 
 
 class Client:
     """Manage client connections activity, update time-locks"""
-    def __init__(self, request, addr: str):
+    def __init__(self, ip_address: str, wallet_address: str):
         # Get or create Receiver model and update last_activity
-        self.receiver, created = Receiver.objects.get_or_create(address=addr)
-        self.receiver.last_activity = timezone.now()
+        self.receiver, created = Receiver.objects.get_or_create(address=wallet_address)
         if created: self.receiver.last_status = 'created'
+        self.receiver.last_activity = timezone.now()
         self.receiver.save()
 
-        # Without connecting IP to the receiver wallet address we have to make
-        # a separate column and update the last_activity for given IP
-        self.ip, is_routable = get_client_ip(request)
-        if self.ip:
-            self.ip, created = IPAddress.objects.get_or_create(address=self.ip)
-            self.ip.last_activity = timezone.now()
-            if created: self.ip.last_status = 'created'
-            self.ip.save()
+        # We will connect IP to the receiver wallet address during transaction time
+        # and purge that data when process is finished (either success or fail/cancel)
+        self.ip, created = IPAddress.objects.get_or_create(address=ip_address, receiver=self.receiver)
+
+    @staticmethod
+    @sync_to_async
+    def from_request(request, wallet_address):
+        ip_address, is_routable = get_client_ip(request)
+        print(ip_address, wallet_address)
+        return Client(ip_address, wallet_address)
+
+    @staticmethod
+    def from_receiver(receiver: Receiver):
+        ip_address = receiver.ip.first().address
+        wallet_address = receiver.address
+        print(ip_address, wallet_address)
+        return Client(ip_address, wallet_address)
+
+    @sync_to_async
+    def is_allowed(self):
+        return not self.receiver.is_now_locked()
 
     def update_activity(self, status: str = ''):
-        for obj in [self.ip, self.receiver]:
-            obj.last_activity = timezone.now()
-            obj.last_status = status
+        self.receiver.last_activity = timezone.now()
+        self.receiver.last_status = status
 
-            if 'failed' not in obj.last_status:
-                obj.last_transaction = timezone.now()
-            else:
-                obj.last_transaction = None
+        if any(reason in ['failed', 'cancelled'] for reason in self.receiver.last_status):
+            self.receiver.last_transaction = None
+        else:
+            self.receiver.last_transaction = timezone.now()
 
-            obj.save()
-            obj.is_now_locked()
+        self.receiver.save()
+        self.receiver.is_now_locked()
 
-    def is_locked(self):
-        if self.ip.is_now_locked() or self.receiver.is_now_locked():
-            return True
-        return False
+        return f"{self} activity updated | last_tx: {self.receiver.last_transaction}"
 
     def __str__(self):
         return f"Client({self.receiver.get_short_address()})"

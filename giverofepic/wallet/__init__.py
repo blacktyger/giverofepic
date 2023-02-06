@@ -9,8 +9,10 @@ def get_secret_value(path: str):
     return storage.get_key(path=path).strip()
 
 
-def get_short(address):
+def get_short(address, extra_short: bool = False):
+    address = str(address)
     try:
-        return f"{address[0:4]}...{address[-4:]}"
+        return f"{address[0:4]}..{address[-4:]}" if not extra_short else f"{address[0:4]}.."
     except Exception:
         return address
+

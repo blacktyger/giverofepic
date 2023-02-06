@@ -1,10 +1,4 @@
-from ninja import Schema, ModelSchema
-from .models import *
-
-
-class CancelTransaction(Schema):
-    receiving_address: str
-    tx_slate_id: str
+from ninja import Schema
 
 
 class PayloadSchema(Schema):

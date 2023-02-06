@@ -4,7 +4,7 @@ let addressIcon = $('.addressIcon')
 let address = $('#walletAddress')
 
 let wallet_type = 'faucet'
-let apiKey = 'blacktyger.test_api_key'
+let apiKey = 'blacktyger.XbIG7WVg'
 
 const spinnerHTMLsm = `<div class="spinner-border spinner-border-sm fs-6" role="status"></div>`
 const spinnerHTML = `<div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>

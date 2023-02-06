@@ -1,5 +1,5 @@
 from django.contrib import admin
 from .models import *
 
-admin.site.register((WalletAddress, IPAddress))
+admin.site.register((Receiver, IPAddress))
 
