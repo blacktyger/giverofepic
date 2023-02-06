@@ -44,6 +44,7 @@ def send_new_transaction(*args):
 
     # """ MAKE SURE WALLET BALANCE IS SUFFICIENT """ #
     balance = wallet.is_balance_enough(amount)
+    print(balance)
 
     if balance is None:
         logger.warning('not enough balance')
@@ -99,13 +100,14 @@ def finalize_transactions(*args):
     to_process = []
     to_post = []
 
-    # Unpickle args
+    # Prepare function args
     pending_transactions = [pickle.loads(v) for v in args][0]
     pending_transactions_ids = [str(tx.tx_slate_id) for tx in pending_transactions]
+    temp_value = pending_transactions[0]
 
     # Initialize Wallet class from PythonSDK and Client
-    wallet_instance = pending_transactions[0].sender
-    client = Client.from_receiver(pending_transactions[0].receiver)
+    wallet_instance = temp_value.sender
+    client = Client.from_receiver(temp_value.receiver)
 
     wallet = Wallet(
         wallet_dir=wallet_instance.wallet_dir,
@@ -176,14 +178,14 @@ def finalize_transactions(*args):
         transaction.save()
 
     wallet_instance.unlock()  # Release the wallet instance
-    print(f"======================"
+    print(f"\n======================"
           f"\n=== UPDATE  REPORT ==="
           f"\npending_transactions: {len(pending_transactions)}"
           f"\nencrypted_slates: {len(encrypted_slates)}"
           f"\nto_process: {len(to_process)}"
           f"\nto_finalize: {len(to_finalize)}"
           f"\nto_post: {len(to_post)}"
-          f"\n======================")
+          f"\n======================\n")
 
 def cancel_transaction(tx):
     logger.info(f">> start working on task cancel_transaction {get_current_job().id}")

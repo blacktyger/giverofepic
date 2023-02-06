@@ -1,12 +1,10 @@
-import pickle
-
 from asgiref.sync import sync_to_async
 from ninja import NinjaAPI
 
 from .models import Transaction, WalletManager, CustomAPIKeyAuth
+from .schema import EncryptedPayloadSchema, PayloadSchema, CancelPayloadSchema
+from faucet.models import Client, SecureRequest
 from .epic_sdk.utils import get_logger
-from .schema import PayloadSchema
-from faucet.models import Client
 from .default_settings import *
 from .epic_sdk import utils
 from . import signals
@@ -21,41 +19,38 @@ logger = get_logger()
 # TODO: change finalize workflow (use listeners instead triggering event)
 """ Initialize multiple wallet manager (WalletPool)"""
 WalletPool = WalletManager()
+# {'amount': 0.01, 'wallet_type': 'faucet', 'address': 'esWenAmhSg9KEmEHMf5JtcuhacVteHHHekT3Xg4yyeoNVXVwo7AW'}
 
 
 """API ENDPOINTS"""
 @api.post("/request_transaction", auth=auth)
-async def initialize_transaction(request, payload: PayloadSchema):
+async def initialize_transaction(request, encrypted_payload: EncryptedPayloadSchema):
     """
-    API-ENDPOINT accessible for client to initialize sending transaction
-    :param payload: encrypted payload with request data
-    :param request: request object
+    API-ENDPOINT for client to request transaction, payload should be encrypted with api_key
+    :param encrypted_payload: encrypted payload with transaction data
+    :param request: Request object
     :return: JSON response
     """
-    print(payload.__dict__)
-    print(request.POST)
 
     # try:
-    # TODO: DECRYPT REQUEST PAYLOAD
-    # TODO: AUTHORIZE WITH API_KEY
+    # """ DECRYPT ENCRYPTED PAYLOAD  """ #
+    payload = SecureRequest(request).decrypt(encrypted_payload.data)
+    if not payload: return utils.response(ERROR, f"{encrypted_payload.data} is not a valid encrypted_payload")
 
-    # """ VALIDATE REQUEST PAYLOAD BEFORE START """ #
-    tx_args = Transaction.validate_tx_args(payload.amount, payload.address)
+    # """ VALIDATE DECRYPTED PAYLOAD """ #
+    tx_args = Transaction.validate_tx_args(payload)
     if tx_args['error']: return tx_args
 
     # """ AUTHORIZE CLIENT CONNECTION (I.E. TIME-LOCK FUNCTION )""" #
-    client = await Client.from_request(request, payload.address)
+    client = await Client.from_request(request, payload['address'])
     if not await client.is_allowed(): return await client.receiver.locked_msg()
 
     # """ FIND AVAILABLE WALLET INSTANCE """ #
-    wallet_instance = await sync_to_async(WalletPool.get_available_wallet)(wallet_type=payload.wallet_type)
+    wallet_instance = await WalletPool.get_available_wallet(wallet_type=payload['wallet_type'])
+    if not wallet_instance: return utils.response(ERROR, f"Can't process your request right now, please try again later.")
 
-    if not wallet_instance:
-        message = f"Can't process your request right now, please try again later."
-        return utils.response(ERROR, message)
-
-    # """ PREPARE TASK TO ENQUEUE """ #
-    args = (payload.amount, payload.address, wallet_instance, client)
+    # """ ENQUEUE WALLET TASK """ #
+    args = (payload['amount'], payload['address'], wallet_instance, client)
     task_id, queue = WalletPool.enqueue_task(wallet_instance, tasks.send_new_transaction, *args)
 
     return utils.response(SUCCESS, 'task successfully enqueued', {'task_id': task_id, 'queue_len': queue.count})
@@ -64,26 +59,39 @@ async def initialize_transaction(request, payload: PayloadSchema):
     #     return utils.response(ERROR, f'send task failed, {str(e)}')
 
 
-@api.get("/cancel_transaction/tx_slate_id={tx_slate_id}")
-async def cancel_transaction(request, tx_slate_id: str):
+@api.post("/cancel_transaction/", auth=auth)
+async def cancel_transaction(request, payload: CancelPayloadSchema):
     """
-    :param request:
-    :param tx_slate_id:
-    :return:
+    API-ENDPOINT for client to request transaction cancellation, requires tx_slate_id
+    :param request: Request object
+    :param payload: transaction slate id
+    :return: JSON Response
     """
     try:
         # Get transaction object
-        transaction = await Transaction.objects.filter(tx_slate_id=tx_slate_id).afirst()
+        transaction = await Transaction.objects.filter(tx_slate_id=payload.tx_slate_id).afirst()
         if not transaction: return utils.response(ERROR, 'Transaction with given id does not exists')
 
-        # """ ENQUEUE TASK """ #
-        kwargs = {'tx': pickle.dumps(transaction)}
-        task_id, queue = WalletPool.enqueue_task(transaction.sender, tasks.cancel_transaction, **kwargs)
+        # Enqueue task
+        wallet_instance = await sync_to_async(lambda: transaction.sender)()
+        task_id, queue = WalletPool.enqueue_task(wallet_instance, tasks.cancel_transaction, *(transaction, ))
         return utils.response(SUCCESS, 'task successfully enqueued', {'task_id': task_id, 'queue_len': queue.count})
 
     except Exception as e:
-        print(e)
+        logger.error(e)
         return utils.response(ERROR, 'cancel_transaction task failed')
+
+
+@api.post("/encrypt_data", auth=auth)
+def encrypt_transaction_data(request, payload: PayloadSchema):
+    """Endpoint for tests, in production client is responsible to encrypt the payload."""
+    print(payload.json())
+    return SecureRequest(request).encrypt(payload.json())
+
+
+@api.post("/decrypt_data/data={encrypted_data}", auth=auth)
+def decrypt_data(request, encrypted_data: str):
+    return SecureRequest(request).decrypt(encrypted_data)
 
 
 @api.get("/get_pending_slates")
@@ -94,6 +102,7 @@ def get_pending_slates(request):
 
 @api.get("/rescan_and_clean_transactions")
 def rescan_and_clean_transactions(request):
+    """Endpoint for tests, trigger single wallet instance transaction clean-up (remove old not finished)."""
     wallet_instance = WalletPool.get_wallet(name='faucet_1')
     WalletPool.enqueue_task(
         wallet_instance=wallet_instance,
@@ -105,7 +114,7 @@ def rescan_and_clean_transactions(request):
 async def get_task(request, task_id: str):
     """
     API-ENDPOINT accessible for client to get status updates about queued task.
-    :param request:
+    :param request: Request object
     :param task_id: UUID str, task ID
     :return: JSON response
     """

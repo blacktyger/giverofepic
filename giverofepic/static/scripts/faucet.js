@@ -5,6 +5,11 @@ let address = $('#walletAddress')
 
 let wallet_type = 'faucet'
 let apiKey = 'blacktyger.XbIG7WVg'
+let headers = {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    'X-API-Key': apiKey
+}
 
 const spinnerHTMLsm = `<div class="spinner-border spinner-border-sm fs-6" role="status"></div>`
 const spinnerHTML = `<div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>
@@ -21,19 +26,17 @@ async function sendTransaction() {
         amount: amount,
         wallet_type: wallet_type
     }
-    let headers = {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'X-API-Key': apiKey
-    }
 
     updateForm(spinnerHTML)
     feedbackField.text('Connecting to the server..')
 
+    let encryptedPayload = await encryptPayload(body)
+    console.log(encryptedPayload)
+
     let response = await fetch(query, {
         method: 'POST',
         headers: headers,
-        body: JSON.stringify(body),
+        body: JSON.stringify({'data': encryptedPayload})
       }).then(checkStatus)
         .catch(err => console.log(err))
 
@@ -285,7 +288,7 @@ async function spawnToast(icon, title) {
 
 // GET TASK STATUS FROM REDIS/QUEUE
 async function getTaskStatus(taskId) {
-    let query = `/api/get_task/id=${taskId}`
+    let query = `/api/wallet/get_task/id=${taskId}`
 
     return await fetch(query, {
         method: 'GET',
@@ -298,16 +301,14 @@ async function getTaskStatus(taskId) {
 }
 
 
-// FINALIZE TRANSACTION
-function finalizeTransaction(tx_slate_id) {
-    let query = `/api/finalize_transaction/tx_slate_id=${tx_slate_id}&address=${address.val()}`
+// ENCRYPT REQUEST PAYLOAD
+async function encryptPayload(payload) {
+    let query = `api/wallet/encrypt_data`
 
-    return fetch(query, {
-        method: 'GET',
-        headers: {
-            'Accept': '*/*',
-            'Content-Type': 'application/json'
-        }
+    return await fetch(query, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(payload)
     }).then(response => response.json())
       .catch(err => {console.log(err)})
 }
@@ -316,15 +317,14 @@ function finalizeTransaction(tx_slate_id) {
 // CANCEL TRANSACTION
 function cancelTransaction(tx_slate_id) {
     let query = `/api/wallet/cancel_transaction/tx_slate_id=${tx_slate_id}}`
+    let body = {'tx_slate_id': tx_slate_id}
 
     return fetch(query, {
-        method: 'GET',
-        headers: {
-            'Accept': '*/*',
-            'Content-Type': 'application/json'
-        }
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(body)
     }).then(response => response.json())
-      .catch(err => {console.log(err)})
+        .catch(err => {console.log(err)})
 }
 
 
@@ -418,3 +418,14 @@ $.fn.timedDisable = function(time) {
       }, 1000);
     });
 };
+
+// // FINALIZE TRANSACTION
+// function finalizeTransaction(tx_slate_id) {
+//     let query = `/api/finalize_transaction/tx_slate_id=${tx_slate_id}&address=${address.val()}`
+//
+//     return fetch(query, {
+//         method: 'GET',
+//         headers: headers
+//     ).then(response => response.json())
+//       .catch(err => {console.log(err)})
+// }

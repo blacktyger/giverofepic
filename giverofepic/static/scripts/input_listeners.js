@@ -1,5 +1,5 @@
 $('#walletAddress').on('input', async function() {
-    let button = $('#confirmButton')
+    let button = $('#receiveButton')
     let address = $('#walletAddress').val()
     let addrText = $('.addressFeedback')
     let addrIcon = $('.addressIcon')

@@ -139,11 +139,18 @@ class Transaction(models.Model):
         return response
 
     @staticmethod
-    def validate_tx_args(amount: float | int | str, receiver_address: str):
+    def validate_tx_args(payload: dict):
+        required_args = ('address', 'amount', 'wallet_type')
+
+        if not all(arg in required_args for arg in payload):
+            message = f"missing argument(s) in {payload}, {required_args} are required"
+            return utils.response(ERROR, message)
+
+        amount = float(payload['amount'])
         try:
-            if 0.00000001 > float(amount) >= MAX_AMOUNT:
+            if 0.00000001 > amount >= MAX_AMOUNT:
                 return utils.response(ERROR, f'Invalid amount (0 < {amount} < {MAX_AMOUNT})')
-            elif len(receiver_address.strip()) != 52:
+            elif len(payload['address'].strip()) != 52:
                 return utils.response(ERROR, 'Invalid receiver_address')
 
         except Exception as e:
@@ -153,10 +160,10 @@ class Transaction(models.Model):
 
     def remove_client_data(self):
         logger.info(f"Purge client data")
-        client_data = IPAddress.objects.filter(receiver=self.receiver).first()
-        if client_data:
-            client_data.receiver = None
-            client_data.save()
+        # client_data = IPAddress.objects.filter(receiver=self.receiver).first()
+        # if client_data:
+        #     client_data.receiver = None
+        #     client_data.save()
 
     def __str__(self):
         return f"Tx({self.status}, {get_short(self.tx_slate_id, True)} | " \
@@ -269,6 +276,7 @@ class WalletManager:
         else:
             return None, None
 
+    @sync_to_async
     def get_available_wallet(self, wallet_type: str = 'faucet'):
         """Get available (not locked, ready to work) wallet instance"""
         try_num = NUM_OF_ATTEMPTS
@@ -308,7 +316,7 @@ class WalletManager:
 
 class CustomAPIKeyAuth(APIKeyAuth):
     """Custom API async auth"""
-    param_name = "X-API-Key"
+    param_name = API_KEY_HEADER
 
     @sync_to_async
     def authenticate(self, request, key):
