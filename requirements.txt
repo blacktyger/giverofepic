@@ -40,3 +40,4 @@ asgiref~=3.5.2
 rq~=1.11.1
 setuptools~=65.6.3
 django-hitcount
+giverofepic/wallet/epic_sdk/epic_wallet_rust_python-0.2.0-cp311-cp311-manylinux_2_31_x86_64.whl
