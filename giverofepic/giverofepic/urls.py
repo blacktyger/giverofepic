@@ -2,13 +2,15 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include
-from wallet.api import api as wallet_api
+
+from giverofepic.api import api as project_api
 from website import views as website_views
 
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/wallet/", wallet_api.urls),
+    path("api/", project_api.urls),
+
     ]
 
 urlpatterns += [

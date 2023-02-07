@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'ninja_apikey',
     'django_rq',
     'hitcount',
+    'giveaway',
     'website',
     'captcha',
     'faucet',

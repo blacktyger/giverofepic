@@ -1,17 +1,13 @@
-import json
 from datetime import timedelta
-from hashlib import md5
-import base64
 
 from asgiref.sync import sync_to_async
 from django.utils import timezone
 from ipware import get_client_ip
-from Crypto.Cipher import AES
 from django.db import models
 import humanfriendly
 
-from wallet.default_settings import API_KEY_HEADER, ERROR
-from wallet.epic_sdk import utils
+from giverofepic.tools import Encryption
+from wallet.default_settings import API_KEY_HEADER, DEFAULT_SECRET_KEY
 from wallet.epic_sdk.utils import get_logger
 
 logger = get_logger()
@@ -119,60 +115,14 @@ class Client:
         return f"Client({self.receiver.get_short_address()})"
 
 
-class SecureRequest:
+class SecureRequest(Encryption):
     """Manage encrypted requests to secure data traffic with 3rd party apps"""
-    BLOCK_SIZE = AES.block_size
-    DEFAULT_SECRET_KEY = 'default_secret_key'
 
     def __init__(self, request):
         secret_key = request.headers.get(API_KEY_HEADER)
         if not secret_key:
             logger.warning(f"Invalid request api-key")
-            secret_key = self.DEFAULT_SECRET_KEY
+            secret_key = DEFAULT_SECRET_KEY
         self.secret_key = secret_key
 
-        self.aes = self._get_aes()
-        self.decrypted_data: str = ''
-        self.encrypted_data: str = ''
-
-    def _get_aes(self):
-        m = md5()
-        m.update(self.secret_key.encode('utf-8'))
-        key = m.hexdigest()
-        m = md5()
-        m.update((self.secret_key + key).encode('utf-8'))
-        iv = m.hexdigest()
-
-        return AES.new(key.encode("utf8"), AES.MODE_CBC, iv.encode("utf8")[:self.BLOCK_SIZE])
-
-    def _pad(self, byte_array):
-        pad_len = self.BLOCK_SIZE - len(byte_array) % self.BLOCK_SIZE
-        return byte_array + (bytes([pad_len]) * pad_len)
-
-    @staticmethod
-    def _unpad(byte_array):
-        return byte_array[:-ord(byte_array[-1:])]
-
-    def encrypt(self, raw_data: dict | str):
-        if isinstance(raw_data, dict):
-            raw_data = json.dumps(raw_data)
-        try:
-            data = self._pad(raw_data.encode("UTF-8"))
-            self.encrypted_data = base64.urlsafe_b64encode(self.aes.encrypt(data)).decode('utf-8')
-            return self.encrypted_data
-        except Exception as e:
-            logger.warning(f"encryption failed, {e}")
-
-    def decrypt(self, encrypted_data: str):
-        try:
-            e_data = base64.urlsafe_b64decode(encrypted_data)
-            self.decrypted_data = self._unpad(self.aes.decrypt(e_data)).decode('utf-8')
-            payload = json.loads(self.decrypted_data)
-
-            if isinstance(payload, dict):
-                return payload
-
-        except Exception as e:
-            logger.warning(f"decryption failed, {e}")
-
-        return None
+        super().__init__(secret_key)

@@ -12,12 +12,8 @@ function get_crypto(secret, encode) {
     : crypto.createDecipheriv('aes-256-cbc', key, iv)
 }
 
-test_crypto_function()
-function test_crypto_function() {
-  const secret = 'f8abb29f13cb932704badb0de414ab08ca9f6c63' // crypto.randomBytes(20).toString('hex')
-
-  const value = 'hello world'
-  const data = Buffer.from(value, 'utf8').toString('binary')
+function test_crypto_function(secret, payload) {
+  const data = Buffer.from(payload, 'utf8').toString('binary')
   const cipher = get_crypto(secret, true)
   const encrypted = Buffer.concat([cipher.update(data, 'utf8'), cipher.final()]).toString('binary')
   const encoded = Buffer.from(encrypted, 'binary').toString('base64')
@@ -28,3 +24,8 @@ function test_crypto_function() {
   const decoded = Buffer.concat([decipher.update(edata, 'binary'), decipher.final()]).toString('utf-8')
   console.log('decoded:', decoded)
 }
+
+test_crypto_function(
+	secret='OUR_API_KEY',
+  	payload="{'amount': 0.01, 'wallet_type': 'faucet', 'address': 'esWenAmhSg9KEmEHMf5JtcuhacVteHHHekT3Xg4yyeoNVXVwo7AW'}"
+)

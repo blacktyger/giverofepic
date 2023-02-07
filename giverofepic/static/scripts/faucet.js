@@ -316,7 +316,7 @@ async function encryptPayload(payload) {
 
 // CANCEL TRANSACTION
 function cancelTransaction(tx_slate_id) {
-    let query = `/api/wallet/cancel_transaction/tx_slate_id=${tx_slate_id}}`
+    let query = `/api/wallet/cancel_transaction`
     let body = {'tx_slate_id': tx_slate_id}
 
     return fetch(query, {

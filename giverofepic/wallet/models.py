@@ -8,7 +8,6 @@ import json
 import time
 import uuid
 
-from ninja_apikey.security import APIKeyAuth, check_apikey
 from django.contrib import admin
 from django.db.models import Q
 from django.db import models
@@ -16,9 +15,9 @@ from rq.job import Job
 from rq import Queue
 import django_rq
 
-from wallet import get_short, get_secret_value
+from giverofepic.tools import get_short, get_secret_value
+from faucet.models import Receiver, IPAddress
 from wallet.epic_sdk.utils import get_logger
-from faucet.models import Client, Receiver, IPAddress
 from wallet.epic_sdk import utils, Wallet
 from wallet.default_settings import *
 
@@ -140,7 +139,7 @@ class Transaction(models.Model):
 
     @staticmethod
     def validate_tx_args(payload: dict):
-        required_args = ('address', 'amount', 'wallet_type')
+        required_args = TRANSACTION_ARGS
 
         if not all(arg in required_args for arg in payload):
             message = f"missing argument(s) in {payload}, {required_args} are required"
@@ -312,19 +311,3 @@ class WalletManager:
         task = Job.fetch(task_id, self.redis_conn)
         message = task.meta['message'] if 'message' in task.meta else 'No message'
         return {'status': task.get_status(), 'message': message, 'result': task.result}
-
-
-class CustomAPIKeyAuth(APIKeyAuth):
-    """Custom API async auth"""
-    param_name = API_KEY_HEADER
-
-    @sync_to_async
-    def authenticate(self, request, key):
-        user = sync_to_async(check_apikey)(key)
-
-        if not user:
-            logger.warning("No auth fort the request")
-            return False
-
-        request.user = user
-        return user

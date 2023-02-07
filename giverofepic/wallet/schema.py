@@ -2,9 +2,9 @@ from ninja import Schema
 
 
 class PayloadSchema(Schema):
-    amount: float | str | int
     address: str
-    wallet_type: str
+    amount: float | str | int
+    event: str
 
 
 class EncryptedPayloadSchema(Schema):

@@ -15,11 +15,11 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "giverofepic.settings")
 django.setup()
 
 from .default_settings import SUCCESS, ERROR, MINIMUM_CONFIRMATIONS, DELETE_AFTER_MINUTES
+from giverofepic.tools import get_secret_value
 from .epic_sdk import Wallet, utils
 from faucet.models import Client
 from .models import Transaction
 from .logger_ import get_logger
-from . import get_secret_value
 
 
 """Initialize Logger"""
@@ -44,7 +44,6 @@ def send_new_transaction(*args):
 
     # """ MAKE SURE WALLET BALANCE IS SUFFICIENT """ #
     balance = wallet.is_balance_enough(amount)
-    print(balance)
 
     if balance is None:
         logger.warning('not enough balance')

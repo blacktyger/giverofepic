@@ -1,9 +1,10 @@
 from asgiref.sync import sync_to_async
-from ninja import NinjaAPI
+from ninja import Router
 
-from .models import Transaction, WalletManager, CustomAPIKeyAuth
 from .schema import EncryptedPayloadSchema, PayloadSchema, CancelPayloadSchema
 from faucet.models import Client, SecureRequest
+from giverofepic.tools import CustomAPIKeyAuth
+from .models import Transaction, WalletManager
 from .epic_sdk.utils import get_logger
 from .default_settings import *
 from .epic_sdk import utils
@@ -11,15 +12,14 @@ from . import signals
 from . import tasks
 
 
-api = NinjaAPI()
+api = Router()
 auth = CustomAPIKeyAuth()
 logger = get_logger()
 
 
 # TODO: change finalize workflow (use listeners instead triggering event)
-""" Initialize multiple wallet manager (WalletPool)"""
+""" Initialize multiple wallet's manager (WalletPool)"""
 WalletPool = WalletManager()
-# {'amount': 0.01, 'wallet_type': 'faucet', 'address': 'esWenAmhSg9KEmEHMf5JtcuhacVteHHHekT3Xg4yyeoNVXVwo7AW'}
 
 
 """API ENDPOINTS"""
@@ -32,34 +32,41 @@ async def initialize_transaction(request, encrypted_payload: EncryptedPayloadSch
     :return: JSON response
     """
 
-    # try:
-    # """ DECRYPT ENCRYPTED PAYLOAD  """ #
-    payload = SecureRequest(request).decrypt(encrypted_payload.data)
-    if not payload: return utils.response(ERROR, f"{encrypted_payload.data} is not a valid encrypted_payload")
+    try:
+        # """ DECRYPT ENCRYPTED PAYLOAD  """ #
+        payload = SecureRequest(request).decrypt(encrypted_payload.data)
+        if not payload: return utils.response(ERROR, f"{encrypted_payload.data} is not a valid encrypted_payload")
 
-    # """ VALIDATE DECRYPTED PAYLOAD """ #
-    tx_args = Transaction.validate_tx_args(payload)
-    if tx_args['error']: return tx_args
+        # EXPECTED DECRYPTED PAYLOAD:
+        """{
+              'amount': 0.01, 
+              'wallet_type': 'faucet', 
+              'address': 'esWenAmhSg9KEmEHMf5JtcuhacVteHHHekT3Xg4yyeoNVXVwo7AW'
+        }"""
 
-    # """ AUTHORIZE CLIENT CONNECTION (I.E. TIME-LOCK FUNCTION )""" #
-    client = await Client.from_request(request, payload['address'])
-    if not await client.is_allowed(): return await client.receiver.locked_msg()
+        # """ VALIDATE DECRYPTED PAYLOAD """ #
+        tx_args = Transaction.validate_tx_args(payload)
+        if tx_args['error']: return tx_args
 
-    # """ FIND AVAILABLE WALLET INSTANCE """ #
-    wallet_instance = await WalletPool.get_available_wallet(wallet_type=payload['wallet_type'])
-    if not wallet_instance: return utils.response(ERROR, f"Can't process your request right now, please try again later.")
+        # """ AUTHORIZE CLIENT CONNECTION (I.E. TIME-LOCK FUNCTION )""" #
+        client = await Client.from_request(request, payload['address'])
+        if not await client.is_allowed(): return await client.receiver.locked_msg()
 
-    # """ ENQUEUE WALLET TASK """ #
-    args = (payload['amount'], payload['address'], wallet_instance, client)
-    task_id, queue = WalletPool.enqueue_task(wallet_instance, tasks.send_new_transaction, *args)
+        # """ FIND AVAILABLE WALLET INSTANCE """ #
+        wallet_instance = await WalletPool.get_available_wallet(wallet_type=payload['wallet_type'])
+        if not wallet_instance: return utils.response(ERROR, f"Can't process your request right now, please try again later.")
 
-    return utils.response(SUCCESS, 'task successfully enqueued', {'task_id': task_id, 'queue_len': queue.count})
+        # """ ENQUEUE WALLET TASK """ #
+        args = (payload['amount'], payload['address'], wallet_instance, client)
+        task_id, queue = WalletPool.enqueue_task(wallet_instance, tasks.send_new_transaction, *args)
 
-    # except Exception as e:
-    #     return utils.response(ERROR, f'send task failed, {str(e)}')
+        return utils.response(SUCCESS, 'task successfully enqueued', {'task_id': task_id, 'queue_len': queue.count})
+
+    except Exception as e:
+        return utils.response(ERROR, f'send task failed, {str(e)}')
 
 
-@api.post("/cancel_transaction/", auth=auth)
+@api.post("/cancel_transaction", auth=auth)
 async def cancel_transaction(request, payload: CancelPayloadSchema):
     """
     API-ENDPOINT for client to request transaction cancellation, requires tx_slate_id
@@ -107,7 +114,8 @@ def rescan_and_clean_transactions(request):
     WalletPool.enqueue_task(
         wallet_instance=wallet_instance,
         target_func=tasks.rescan_and_clean_transactions,
-        **{'wallet': wallet_instance})
+        **{'wallet': wallet_instance}
+        )
 
 
 @api.get('/get_task/id={task_id}')

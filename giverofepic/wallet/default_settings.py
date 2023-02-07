@@ -7,9 +7,18 @@ ATTEMPTS_INTERVAL = 3
 NUM_OF_ATTEMPTS = 3
 
 MINIMUM_CONFIRMATIONS = 1
+TRANSACTION_ARGS = ('address', 'amount', 'event')
+DEFAULT_FEE = 0.008
 MAX_AMOUNT = 0.1
 
+MAIN_DOMAIN = 'giverofepic.com'
+GIVEAWAY_LINKS_PATH = f'{MAIN_DOMAIN}/giveaway'
+GIVEAWAY_LINKS_DOMAIN = 'giverofepic.give'
+GIVEAWAY_LINKS_API_KEY_PATH = 'Giveawaylink/apikey'
+GIVEAWAY_LINK_LIFETIME_MINUTES = 1
+
 API_KEY_HEADER = "X-API-Key"
+DEFAULT_SECRET_KEY = 'default_secret_key'
 
 EPICBOX_DOMAIN = 'epicpost.stackwallet.com'
 EPICBOX_PORT = 0
