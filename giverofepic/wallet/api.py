@@ -74,6 +74,7 @@ async def cancel_transaction(request, payload: CancelPayloadSchema):
     :param payload: transaction slate id
     :return: JSON Response
     """
+    print(request.auth)
     try:
         # Get transaction object
         transaction = await Transaction.objects.filter(tx_slate_id=payload.tx_slate_id).afirst()
