@@ -6,9 +6,9 @@ from ipware import get_client_ip
 from django.db import models
 import humanfriendly
 
-from giverofepic.tools import Encryption
 from wallet.default_settings import API_KEY_HEADER, DEFAULT_SECRET_KEY
 from wallet.epic_sdk.utils import get_logger
+from giverofepic.tools import Encryption
 
 logger = get_logger()
 

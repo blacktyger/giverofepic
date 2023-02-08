@@ -1,14 +1,10 @@
 from ninja import Schema
 
 
-class PayloadSchema(Schema):
+class TransactionPayloadSchema(Schema):
     address: str
     amount: float | str | int
     event: str
-
-
-class EncryptedPayloadSchema(Schema):
-    data: str
 
 
 class CancelPayloadSchema(Schema):

@@ -1,4 +1,4 @@
 from django.contrib import admin
 from .models import *
 
-admin.site.register((InBlancoLink, PersonalLink, ))
+admin.site.register((Link, ))

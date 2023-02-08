@@ -1,6 +1,6 @@
 from ninja import Schema
 
 
-class PayloadSchema(Schema):
+class FormResultSchema(Schema):
     form: dict
     answer: dict

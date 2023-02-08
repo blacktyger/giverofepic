@@ -155,7 +155,7 @@ class Transaction(models.Model):
         except Exception as e:
             return utils.response(ERROR, f'Invalid tx_args, {e}')
 
-        return utils.response(SUCCESS, 'tx_args valid')
+        return utils.response(SUCCESS, 'tx_args are valid')
 
     def remove_client_data(self):
         logger.info(f"Purge client data")
@@ -276,14 +276,20 @@ class WalletManager:
             return None, None
 
     @sync_to_async
-    def get_available_wallet(self, wallet_type: str = 'faucet'):
-        """Get available (not locked, ready to work) wallet instance"""
+    def get_available_wallet(self, event: str = 'faucet'):
+        """Get available (not locked, ready to work, matching request type) wallet instance"""
+        event = event.lower()
         try_num = NUM_OF_ATTEMPTS
         available_wallet = None
 
+        if event in ['faucet', 'quiz']:
+            query = Q(disabled=False) & Q(name__startswith=event)
+        else:
+            query = Q(disabled=False) & Q(name__startswith='giveaway')
+
         while not available_wallet and try_num:
-            all_wallets = self.wallets.filter(disabled=False, name__startswith=wallet_type)
-            logger.info(f">> {all_wallets.count()} '{wallet_type}' wallets")
+            all_wallets = self.wallets.filter(query)
+            logger.info(f">> {all_wallets.count()} '{event}' wallets")
 
             for wallet in all_wallets:
                 if not wallet.is_locked:
