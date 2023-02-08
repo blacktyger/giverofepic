@@ -37,7 +37,24 @@ class Link(models.Model):
         """
         giverofepic.com/giveaway/TW5EPIC-
         """
-        pass
+        code_prefix = f"{self.event.upper()[:8]}_{int(self.amount)}"
+
+        if self.personal:
+            to_encrypt = (self.address, self.amount, self.timestamp.utcnow())
+        else:
+            to_encrypt = (self.amount, self.timestamp.utcnow())
+
+        to_encrypt = str(to_encrypt)
+        print(to_encrypt)
+
+        code_validator = f"{Encryption(secret_key=self.issuer_api_key).encrypt(to_encrypt)}"
+        print(code_validator)
+
+        code = f"{code_prefix}-{code_validator[:10]}"
+        print(code)
+
+        link = f"https://giverofepic.com/claim/{code}"
+        print(link)
 
     def __str__(self):
         if self.claimed:
