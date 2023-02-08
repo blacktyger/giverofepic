@@ -1,16 +1,23 @@
-/tests.py
+/giverofepic/faucet/migrations/
+/giverofepic/faucet/__pycache__/
+
+/giverofepic/giveaway/migrations/
+/giverofepic/giveaway/__pycache__/
+
 /giverofepic/giverofepic/__pycache__/
+/giverofepic/giverofepic/secrets.py
+
+/giverofepic/integrations/migrations/
+/giverofepic/integrations/__pycache__/
+
+/giverofepic/wallet/migrations/
 /giverofepic/wallet/__pycache__/
 /giverofepic/wallet/epic-sdk/
-/giverofepic/wallet/migrations/__pycache__/
-/giverofepic/wallet/migrations/
-
-/giverofepic/giverofepic/secrets.py
-/giverofepic/secrets.py
 
 giverofepic/website/migrations/
-giverofepic/website/migrations/__pycache__/
+giverofepic/website/__pycache__/
 
+/tests.py
 /build/
 /setup.py
 /Pipfile.lock
@@ -21,7 +28,3 @@ giverofepic/db.sqlite3
 */*/__pycache__/
 */*/*/__pycache__/
 /dev_notes.md
-/giverofepic/faucet/migrations/
-/giverofepic/faucet/migrations/__pycache__/
-/giverofepic/faucet/__pycache__/
-

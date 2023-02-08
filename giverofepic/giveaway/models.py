@@ -20,13 +20,6 @@ from wallet.epic_sdk.utils import logger
 
 # hwraX9qO.aXzSiWEKZXiy6E7LDKAiJwL5VIyfw1qrtnDnQYII1ad2EXMjHhQ6z1bq
 
-class PersonalLink(Link):
-    address = models.CharField(max_length=128, help_text="receiver wallet address")
-
-
-class InBlancoLink(Link):
-    reusable = models.IntegerField(default=0, null=True)
-
 
 class Link(models.Model):
     already_claimed = models.BooleanField(default=False)
@@ -51,3 +44,11 @@ class Link(models.Model):
         else:
             claimed = "🟢"
         return f"{claimed} {self.event.upper()} CODE: {self.amount} {self.currency} -> {get_short(self.address)}"
+
+
+class PersonalLink(Link):
+    address = models.CharField(max_length=128, help_text="receiver wallet address")
+
+
+class InBlancoLink(Link):
+    reusable = models.IntegerField(default=0, null=True)
