@@ -16,7 +16,6 @@
 
 giverofepic/website/migrations/
 giverofepic/website/__pycache__/
-
 /tests.py
 /build/
 /setup.py
@@ -24,6 +23,7 @@ giverofepic/website/__pycache__/
 .idea/
 giverofepic/db.sqlite3
 *.sqlite3
+/__pycache__
 */__pycache__/
 */*/__pycache__/
 */*/*/__pycache__/

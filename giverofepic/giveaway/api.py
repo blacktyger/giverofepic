@@ -17,17 +17,28 @@ logger = get_logger()
 """API ENDPOINTS"""
 @api.post("/generate_link", auth=auth)
 def generate_link(request, payload: LinkSchema):
-    payload.issuer_api_key = SecureRequest(request).secret_key
+    # payload.issuer_api_key = SecureRequest(request).secret_key
     print(payload)
+
     if not payload.issuer_api_key:
         return utils.response(ERROR, 'invalid apikey')
 
-    from cryptography.fernet import Fernet
+    link = Link.objects.create(**payload.dict())
+    print(link.get_url())
 
-    key = Fernet.generate_key()
-    f = Fernet(key)
-    token = f.encrypt(b"esZ7pubuHN4Dyn8WsCRjzhe12ZtgHqmnthGoopA1iSskm2xwXcKK")
-    print(token)
-    # object = Code.objects.create(**payload.dict())
-    # print(object.get_short_link())
+    """API ENDPOINTS"""
+
+
+# @api.post("/get_link", auth=auth)
+# def generate_link(request, payload: LinkSchema):
+#     # payload.issuer_api_key = SecureRequest(request).secret_key
+#     print(payload)
+#
+#     if not payload.issuer_api_key:
+#         return utils.response(ERROR, 'invalid apikey')
+#
+#     link = Link.objects.create(**payload.dict())
+#     print(link.get_url())
+#
+#     Link.validate_short_link()
 
