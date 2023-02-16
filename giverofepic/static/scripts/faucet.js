@@ -267,16 +267,17 @@ async function finishedTaskHandler(task, type) {
 
 
 // SPAWN TOAST NOTIFICATION
-async function spawnToast(icon, title) {
+async function spawnToast(icon, title, timer=2500, confBtn=false,
+                          iconColor='white', position='top') {
     const Toast = Swal.mixin({
         toast: true,
-        position: 'top',
-        iconColor: 'white',
-        customClass: {
-            popup: 'colored-toast'
-        },
-        showConfirmButton: false,
-        timer: 2500,
+        position: position,
+        iconColor: iconColor,
+        // customClass: {
+        //     popup: 'colored-toast'
+        // },
+        showConfirmButton: confBtn,
+        timer: timer,
         timerProgressBar: true
     })
     await Toast.fire({

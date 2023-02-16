@@ -1,9 +1,18 @@
 {% extends "website/base.html" %} {%  load static %} %}
 
 {% block body %}
-    {{ dfsf }}
-{#    {{ object_list.0.hit_count_generic }}#}
-    {%  include 'faucet/app.html' %}
+
+    {%  if not object  %}
+        {%  include 'faucet/app.html' %}
+
+    {%  else %}
+        {%  if not object.result %}
+            {%  include 'giveaway/link_invalid.html' %}
+        {% else %}
+            {{ object }}
+        {%  endif %}
+
+    {%  endif %}
 {% endblock %}
 
 

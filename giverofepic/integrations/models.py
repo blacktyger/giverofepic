@@ -12,6 +12,8 @@ class FormResult(models.Model):
 
     @staticmethod
     def from_body(body: dict):
+        if not body: return None
+
         form = body['form']
         points = body['answer']['point']['tp']
         completed_in = body['answer']['completeSecond']

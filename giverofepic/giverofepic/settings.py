@@ -18,7 +18,12 @@ DEBUG = True
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "giverofepic.settings")
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1',
+                 '209.127.179.199', 'giverofepic.com', 'www.giverofepic.com']
+USED_HOST = f"{ALLOWED_HOSTS[1]}:8000"
+
+ALLOWED_HOSTS += ["f519-78-149-140-139.ngrok.io"]
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -141,7 +146,7 @@ SENTRY_DSN = "https://9238840ac47c4289a2035ba9d797566b@o4504589365411840.ingest.
 if os.getenv('DJANGO_DEVELOPMENT') == 'true':
     # DEBUG = False
     SENTRY_DSN = "https://6f6cefddc3d849dc99dafaa8c9c0c6be@o4504589365411840.ingest.sentry.io/4504589394706432"
-    ALLOWED_HOSTS = ['localhost', '209.127.179.199', 'giverofepic.com', 'www.giverofepic.com']
+    USED_HOST = ALLOWED_HOSTS[3]
     RQ_QUEUES = {
         'default': {
             'HOST': '127.0.0.1',

@@ -7,6 +7,7 @@ import json
 
 from django.utils import timezone
 
+from giverofepic.settings import USED_HOST
 from wallet.default_settings import (
     TRANSACTION_ARGS,
     GIVEAWAY_LINKS_LIFETIME_MINUTES,
@@ -46,27 +47,32 @@ class Link(models.Model):
         print(code_validator)
 
         self.code = f"{code_prefix}-{code_validator[-10:]}"
-        self.ready_link = f"https://giverofepic.com/claim/{self.code}"
+        self.ready_link = f"{USED_HOST}/claim/{self.code}"
         self.save()
 
         return self.ready_link
 
     @staticmethod
-    def validate(short_link: str):
-        """https://giverofepic.com/claim/GIVEAWAY_0.01-Vex_hp45tR"""
-        link_record = Link.objects.filter(short_link=short_link).first()
+    def validate(code: str):
+        """
+        domain.com/claim/<code>
+        https://giverofepic.com/claim/GIVEAWAY_0.01-Vex_hp45tR"""
+        link_record = Link.objects.filter(code=code).first()
 
         if not link_record:
-            logger.error('Invalid link code (invalid code)')
-            return None
+            message = 'Invalid link code (invalid code)'
+            logger.error(message)
+            return utils.response(ERROR, message)
 
         if link_record.claimed:
-            logger.warning('Invalid link code (already claimed)')
-            return None
+            message = 'Invalid link code (already claimed)'
+            logger.warning(message)
+            return utils.response(ERROR, message)
 
         if link_record.expires < timezone.now():
-            logger.warning('Invalid link code (date expired)')
-            return None
+            message = 'Invalid link code (date expired)'
+            logger.warning(message)
+            return utils.response(ERROR, message)
 
         if link_record.reusable > 0:
             link_record.reusable -= 1
@@ -77,11 +83,13 @@ class Link(models.Model):
             logger.info(f"Personal link with address provided")
             # TODO: Accept the link and send transaction
 
-        if not link_record.personal and not link_record.address:
+        if not link_record.personal:
             logger.info(f"In Blanco link without specified receiver")
             # TODO: Accept the link and redirect to address form
 
-        logger.info(f"Personal link successfully processed and reward claimed")
+        message = f"Personal link successfully validated"
+        logger.info(message)
+        return utils.response(SUCCESS, message, link_record)
 
     def __str__(self):
         if self.claimed:

@@ -36,7 +36,7 @@ class CustomAPIKeyAuth(APIKeyAuth):
         user = sync_to_async(check_apikey)(key)
 
         if not user:
-            logger.warning("No auth fort the request")
+            logger.warning("No auth for the request")
             return False
 
         request.user = user

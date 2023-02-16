@@ -1,0 +1,15 @@
+{% load static %}
+
+{# SPAWN SUCCESS TOAST #}
+
+{%  if object.personal %}
+    <script>
+        spawnToast('success', `Your claim was successful, transaction should appear in your wallet soon.`, 10000, true, '', 'center')
+            .then(() => {window.location.href = '/'})
+    </script>
+{%  else  %}
+    <script>
+        spawnToast('success', `Please provide your wallet address`, 10000, true, '', 'center')
+            .then(() => {window.location.href = '/'})
+    </script>
+{%  endif %}

@@ -121,7 +121,6 @@ class SecureRequest(Encryption):
     def __init__(self, request):
         secret_key = request.headers.get(API_KEY_HEADER)
         if not secret_key:
-            logger.warning(f"Invalid request api-key")
             secret_key = DEFAULT_SECRET_KEY
         self.secret_key = secret_key
 

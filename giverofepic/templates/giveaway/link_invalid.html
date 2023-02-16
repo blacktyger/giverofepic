@@ -1,0 +1,8 @@
+{% load static %}
+
+{# SPAWN ERROR TOAST AND REDIRECT TO THE HOME PAGE #}
+
+<script>
+    spawnToast('error', `{{ object.message }}`, 10000, true, '', 'center')
+        .then(() => {window.location.href = '/'})
+</script>
