@@ -9,9 +9,7 @@ from django.utils import timezone
 
 from giverofepic.settings import USED_HOST
 from wallet.default_settings import (
-    TRANSACTION_ARGS,
-    GIVEAWAY_LINKS_LIFETIME_MINUTES,
-    ERROR, SUCCESS
+    ERROR, SUCCESS, QUIZ_LINKS_LIFETIME_MINUTES
     )
 from giverofepic.tools import Encryption, get_secret_value, get_short
 from wallet.epic_sdk import utils
@@ -29,7 +27,7 @@ class Link(models.Model):
     personal = models.BooleanField(default=True)
     currency = models.CharField(max_length=10, default='EPIC')
     claimed = models.BooleanField(default=False)
-    expires = models.DateTimeField(default=timezone.now() + timedelta(minutes=GIVEAWAY_LINKS_LIFETIME_MINUTES))
+    expires = models.DateTimeField(default=timezone.now() + timedelta(minutes=QUIZ_LINKS_LIFETIME_MINUTES))
     address = models.CharField(max_length=128, help_text="receiver wallet address", blank=True)
     amount = models.DecimalField(max_digits=16, decimal_places=3, help_text="amount of currency to send")
     event = models.CharField(max_length=64, default='giveaway')
@@ -37,19 +35,18 @@ class Link(models.Model):
 
     def get_url(self):
         """https://giverofepic.com/claim/GIVEAWAY_0.01-Vex_hp45tR"""
-        amount = int(self.amount) if self.amount > 1 else f"{self.amount:.2f}"
-        timestamp = int(self.timestamp.timestamp())
-        code_prefix = f"{self.event.upper()[:8]}_{amount}"
-        to_encrypt = str((self.address, self.amount, timestamp))  # self.timestamp.isoformat()))
-        print(to_encrypt)
+        if not self.code:
+            amount = int(self.amount) if 0 < self.amount > 1 else f"{self.amount:.2f}"
+            timestamp = int(self.timestamp.timestamp())
+            code_prefix = f"{self.event.upper()[:8]}_{amount}"
+            to_encrypt = str((self.address, self.amount, timestamp, self.timestamp.isoformat()))
+            code_validator = f"{Encryption(secret_key=self.issuer_api_key).encrypt(to_encrypt)}"
+            self.code = f"{code_prefix}-{code_validator[-10:]}"
+            self.ready_link = f"{USED_HOST}/claim/{self.code}"
+        else:
+            self.ready_link = f"{USED_HOST}/claim/{self.code}"
 
-        code_validator = f"{Encryption(secret_key=self.issuer_api_key).encrypt(to_encrypt)}"
-        print(code_validator)
-
-        self.code = f"{code_prefix}-{code_validator[-10:]}"
-        self.ready_link = f"{USED_HOST}/claim/{self.code}"
         self.save()
-
         return self.ready_link
 
     @staticmethod
