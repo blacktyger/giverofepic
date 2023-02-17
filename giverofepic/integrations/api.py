@@ -1,38 +1,25 @@
 import http
-from datetime import timedelta
-from pprint import pprint
 
-from django.utils import timezone
 from ninja import Router
 
-from giveaway.models import Link
-from integrations.schema import FormResultSchema
-from wallet.default_settings import GIVEAWAY_LINKS_LIFETIME_MINUTES, QUIZ_API_KEY
-from wallet.epic_sdk.utils import get_logger
 from integrations.models import FormResult, FormUser
+from wallet.default_settings import QUIZ_API_KEY
+from integrations.schema import FormResultSchema
+from wallet.epic_sdk.utils import get_logger
+from giveaway.models import Link
+
 
 api = Router()
 logger = get_logger()
 
+
 """API ENDPOINTS"""
-
-
-@api.get("/form_webhook")
-def form_webhook():
-    """GET endpoint for health checks from forms.app"""
-    return http.HTTPStatus.OK
-
-
-# e7197f0a
-# aaa031ac
-
 @api.post("/form_webhook")
 def form_webhook(request, payload: FormResultSchema):
     """POST endpoint as webhook, receive form results and store them in db"""
     if payload.form:
-        # try:
+        try:
             payload = payload.dict()
-            # print(payload)
             payload['user'] = FormUser.from_body(payload)
 
             if not payload['user'].is_locked():
@@ -41,6 +28,8 @@ def form_webhook(request, payload: FormResultSchema):
 
                 if form:
                     logger.info(f">> Received new {form} from {form.user}")
+
+                    # Creates new Link object for claiming the reward
                     Link.objects.create(
                         issuer_api_key=QUIZ_API_KEY,
                         reusable=0,
@@ -57,7 +46,13 @@ def form_webhook(request, payload: FormResultSchema):
                 form.is_valid = False
                 form.save()
 
-        # except Exception as e:
-        #     logger.error(f">> Form webhook fail, {e}")
+        except Exception as e:
+            logger.error(f">> Form webhook fail, {e}")
 
     return http.HTTPStatus.ACCEPTED
+
+
+# @api.get("/form_webhook")
+# def form_webhook():
+#     """GET endpoint for health checks from forms.app"""
+#     return http.HTTPStatus.OK

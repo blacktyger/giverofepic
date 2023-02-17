@@ -8,6 +8,7 @@ import json
 from django.utils import timezone
 
 from giverofepic.settings import USED_HOST
+from integrations.models import FormResult
 from wallet.default_settings import (
     ERROR, SUCCESS, QUIZ_LINKS_LIFETIME_MINUTES
     )
@@ -33,7 +34,7 @@ class Link(models.Model):
     event = models.CharField(max_length=64, default='giveaway')
     code = models.CharField(max_length=64, default='')
 
-    def get_url(self):
+    def get_url(self):  # that mean we have giveaway link
         """https://giverofepic.com/claim/GIVEAWAY_0.01-Vex_hp45tR"""
         if not self.code:
             amount = int(self.amount) if 0 < self.amount > 1 else f"{self.amount:.2f}"
@@ -43,7 +44,7 @@ class Link(models.Model):
             code_validator = f"{Encryption(secret_key=self.issuer_api_key).encrypt(to_encrypt)}"
             self.code = f"{code_prefix}-{code_validator[-10:]}"
             self.ready_link = f"{USED_HOST}/claim/{self.code}"
-        else:
+        else:  # that means we have quiz link
             self.ready_link = f"{USED_HOST}/claim/{self.code}"
 
         self.save()
@@ -78,13 +79,23 @@ class Link(models.Model):
 
         if link_record.personal and link_record.address:
             logger.info(f"Personal link with address provided")
-            # TODO: Accept the link and send transaction
+            # TODO: Process personal link
 
         if not link_record.personal:
             logger.info(f"In Blanco link without specified receiver")
-            # TODO: Accept the link and redirect to address form
 
-        message = f"Personal link successfully validated"
+            if 'quiz' in link_record.event:
+                # TODO: Process quiz event link, get user address
+                form = FormResult.objects.get(session_id=link_record.code)
+                form.claimed = True
+                form.save()
+
+            elif 'giveaway' in link_record.event:
+                # TODO: Process in blanco giveaway event link, get user address
+                link_record.claimed = True
+                pass
+
+        message = f"link successfully validated"
         logger.info(message)
         return utils.response(SUCCESS, message, link_record)
 

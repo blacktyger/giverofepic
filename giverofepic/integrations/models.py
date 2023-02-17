@@ -1,9 +1,9 @@
 from datetime import timedelta
-from pprint import pprint
 
-import humanfriendly
-from django.db import models
 from django.utils import timezone
+from django.contrib import admin
+from django.db import models
+import humanfriendly
 
 from wallet.default_settings import QUIZ_USER_TIME_LOCK_MINUTES, QUIZ_MIN_POINT_FOR_REWARD
 from wallet.epic_sdk.utils import logger
@@ -35,6 +35,7 @@ class FormUser(models.Model):
 
     def last_rewarded_form(self):
         return self.get_forms().filter(
+            claimed=True,
             is_valid=True,
             points__gt=QUIZ_MIN_POINT_FOR_REWARD,
             timestamp__gte=timezone.now() - timedelta(minutes=QUIZ_USER_TIME_LOCK_MINUTES)
@@ -65,10 +66,22 @@ class FormUser(models.Model):
         return f"{icon} FormUser({self.username if self.username else self.id})"
 
 
+@admin.register(FormUser)
+class FormUserAdmin(admin.ModelAdmin):
+    list_display = ('username', 'id', 'form_count', 'forms', )
+
+    def forms(self, obj):
+        return " | ".join([f"Form({o.session_id})" for o in obj.get_forms()])
+
+    def form_count(self, obj):
+        return obj.get_forms().count()
+
+
 class FormResult(models.Model):
     user = models.ForeignKey(FormUser, on_delete=models.CASCADE, blank=True, null=True, related_name='forms')
     points = models.IntegerField()
     reward = models.IntegerField(default=0, null=True)
+    claimed = models.BooleanField(default=False)
     form_id = models.CharField(max_length=64)
     is_valid = models.BooleanField(default=True)
     timestamp = models.DateTimeField(auto_now_add=True)
