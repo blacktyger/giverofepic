@@ -38,7 +38,6 @@ async def initialize_transaction(request, payload: TransactionPayloadSchema):
     }
     """
     print(request.auth)
-    print(request.auth.__dict__)
     try:
         # """ VALIDATE TRANSACTION PAYLOAD """ #
         tx_args = Transaction.validate_tx_args(payload.dict())

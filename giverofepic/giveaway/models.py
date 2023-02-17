@@ -10,7 +10,7 @@ from django.utils import timezone
 from giverofepic.settings import USED_HOST
 from integrations.models import FormResult
 from wallet.default_settings import (
-    ERROR, SUCCESS, QUIZ_LINKS_LIFETIME_MINUTES
+    ERROR, SUCCESS, QUIZ_LINKS_LIFETIME_MINUTES, LOCAL_WALLET_API_URL, API_KEY_HEADER, QUIZ_API_KEY
     )
 from giverofepic.tools import Encryption, get_secret_value, get_short
 from wallet.epic_sdk import utils
@@ -50,8 +50,8 @@ class Link(models.Model):
         self.save()
         return self.ready_link
 
-    @staticmethod
-    def validate(code: str):
+    @classmethod
+    def validate(cls, code: str):
         """
         domain.com/claim/<code>
         https://giverofepic.com/claim/GIVEAWAY_0.01-Vex_hp45tR"""
@@ -79,25 +79,72 @@ class Link(models.Model):
 
         if link_record.personal and link_record.address:
             logger.info(f"Personal link with address provided")
-            # TODO: Process personal link
+            cls._process_personal_link(link_record)
 
         if not link_record.personal:
             logger.info(f"In Blanco link without specified receiver")
 
             if 'quiz' in link_record.event:
-                # TODO: Process quiz event link, get user address
-                form = FormResult.objects.get(session_id=link_record.code)
-                form.claimed = True
-                form.save()
+                cls._process_quiz_link(link_record)
 
             elif 'giveaway' in link_record.event:
-                # TODO: Process in blanco giveaway event link, get user address
+                cls._process_in_blanco_link(link_record)
                 link_record.claimed = True
                 pass
 
         message = f"link successfully validated"
         logger.info(message)
         return utils.response(SUCCESS, message, link_record)
+
+    @classmethod
+    def _process_personal_link(cls, link):
+        # TODO: Process personal link
+        params = {'address': link.address, 'amount': float(link.amount), 'event': link.event}
+        response = cls._wallet_api(query='request_transaction', params=params)
+
+        if not response['error']:
+            link.claimed = True
+            link.save()
+
+        return response
+
+    @classmethod
+    def _process_quiz_link(cls, link):
+        # TODO: get user address
+        params = {'address': link.address, 'amount': link.amount, 'event': link.event}
+        response = cls._wallet_api(query='request_transaction', params=params)
+
+        if not response['error']:
+            form = FormResult.objects.get(session_id=link.code)
+            form.claimed = True
+            form.save()
+            link.claimed = True
+            link.save()
+
+        return response
+
+    @classmethod
+    def _process_in_blanco_link(cls, link):
+        # TODO: get user address
+        params = {'address': link.address, 'amount': link.amount, 'event': link.event}
+        response = cls._wallet_api(query='request_transaction', params=params)
+
+        if not response['error']:
+            link.claimed = True
+            link.save()
+
+        return response
+
+    @staticmethod
+    def _wallet_api(query: str, params: dict):
+        url = f"http://{LOCAL_WALLET_API_URL}/{query}"
+        headers = {API_KEY_HEADER: QUIZ_API_KEY}
+        response = requests.post(url, json=params, headers=headers)
+
+        if response.status_code in [200, 202]:
+            return response.json()
+        else:
+            print(response.text)
 
     def __str__(self):
         if self.claimed:
