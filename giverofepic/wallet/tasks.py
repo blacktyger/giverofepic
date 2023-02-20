@@ -89,11 +89,13 @@ def send_new_transaction(*args):
             client.update_activity(status=transaction.status)
             response = utils.response(SUCCESS, 'post tx success', {'tx_slate_id': transaction.tx_slate_id})
             logger.info(response)
-            link = Link.objects.get(code=code)
-            link.claimed = True
-            link.address = address
-            link.claim_date = timezone.now()
-            link.save()
+
+            if code:
+                link = Link.objects.get(code=code)
+                link.claimed = True
+                link.address = address
+                link.claim_date = timezone.now()
+                link.save()
         else:
             client.update_activity(status="transaction failed (initialize stage)")
             transaction.remove_client_data()
