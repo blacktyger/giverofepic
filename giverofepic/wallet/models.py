@@ -241,6 +241,11 @@ class WalletManager:
         self.slate_listener = threading.Thread(target=self._run_listener)
         self.slate_listener.start()
 
+    def stop_listener(self):
+        logger.info(f">> Stopping slate_listener threads..")
+        if self.slate_listener:
+            self.slate_listener = None
+
     def get_pending_slates(self):
         # Get active wallet instances
         filter_ = Q(disabled=False) and Q(is_listening=True)

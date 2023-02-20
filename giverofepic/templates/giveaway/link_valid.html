@@ -4,6 +4,7 @@
     <div class="row">
         <div class="col-12">
             {%  if link.claimed %}
+
                 <div class="card bg-warning text-white text-center">
                     <div class="card-header" style="font-size: 1.3rem;">
                         <span class="material-icons align-middle me-1" style="font-size: 1.8rem;">
@@ -12,7 +13,9 @@
                         LINK ALREADY CLAIMED
                     </div>
                 </div>
-            {%  elif link.expires > now %}
+
+            {%  elif link.expires < now %}
+
                 <div class="card bg-danger text-white text-center">
                     <div class="card-header" style="font-size: 1.3rem;">
                         <span class="material-icons align-middle me-1" style="font-size: 1.8rem;">
@@ -21,6 +24,18 @@
                         LINK EXPIRED
                     </div>
                 </div>
+
+            {%  else %}
+
+                <div class="card bg-success text-white text-center">
+                    <div class="card-header" style="font-size: 1.3rem;">
+                        <span class="material-icons align-middle me-1" style="font-size: 1.8rem;">
+                            check_circle
+                        </span>
+                        LINK IS VALID
+                    </div>
+                </div>
+
             {%  endif %}
         </div>
     </div>
@@ -76,7 +91,10 @@
     </div>
 </section>
 
-{% if not link.claimed and link.expires < now %}
+
+{# IF LINK IS VALID SHOW ADDRESS INPUT #}
+{% if not link.claimed and link.expires > now %}
+
     <section class="address-form">
         <div class="row">
             <div class="col-12">
@@ -84,12 +102,15 @@
             </div>
         </div>
     </section>
+
+{# ELSE SHOW GIVER OF EPIC STATUE #}
 {%  else %}
-    {#GIVER OF EPIC STATUE #}
+
     <div class="row my-3 justify-content-center">
         <div class="col-auto text-center">
             <img class="mt-2" src="{% static 'img/giverofepic_statue.png' %}" alt='STATUE'>
         </div>
     </div>
+
 {%  endif %}
 

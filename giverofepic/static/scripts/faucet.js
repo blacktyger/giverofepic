@@ -49,7 +49,8 @@ async function requestTransaction(amount, event, code) {
                 if (task.status === 'finished') {
                     console.log(task)
                     taskFinished = true
-                    spawnToast('success', 'Transaction sent successfully, refresh your wallet.', 10000, false)
+                    transactionStatusAlert()
+
 
                 } else if (task.status === 'failed') {
                     taskFinished = true

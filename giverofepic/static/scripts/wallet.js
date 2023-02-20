@@ -1,20 +1,38 @@
-let feedbackField = $('.feedbackField')
-let receiveButton = $('#receiveButton')
-let addressIcon = $('.addressIcon')
-let address = $('#walletAddress')
+let timerInterval
 
-let apiKey = 'blacktyger.XbIG7WVg'
-let headers = {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
-    'X-API-Key': apiKey
-}
+function transactionStatusAlert() {
+    Swal.fire({
+        icon: 'success',
+        title: 'Transaction sent!',
+        html:
+            `<p>Please refresh your mobile wallet and confirm incoming 
+             transaction within next <strong></strong> minutes. 
+             After that time transaction will be automatically cancelled.</p>` +
+            `<p>You can safely close this window, or stay and check your transaction 
+             status update.</p>` +
+            `<hr><div class="fs-4 mb-2">TRANSACTION STATUS:</div>` +
+            `<span class="status"></span> `,
+            timer: 1000 * 60 * 60,
+            didOpen: async () => {
+                const content = Swal.getHtmlContainer()
+                const $ = content.querySelector.bind(content)
+                let responseReceived = false
 
+                Swal.showLoading()
+                timerInterval = setInterval(() => {
+                    Swal.getHtmlContainer().querySelector('strong')
+                        .textContent = (Swal.getTimerLeft() / (1000 * 60))
+                        .toFixed(0)
+                }, 100)
 
-
-// FEEDBACK IF CONNECTION WITH DB FAILED
-checkStatus = async (response, feedbackField) => {
-    if (response.status >= 200 && response.status < 300)
-        return await response.json()
-    feedbackField.text(response.status)
+                while (!responseReceived) {
+                    Swal.getHtmlContainer().querySelector('span')
+                        .textContent = `⏳ Waiting for response..`
+                    await sleep(2000)
+                }
+        },
+        willClose: () => {
+            clearInterval(timerInterval)
+        }
+    })
 }

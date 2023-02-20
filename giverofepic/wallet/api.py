@@ -88,22 +88,16 @@ async def cancel_transaction(request, payload: CancelPayloadSchema):
         return utils.response(ERROR, 'cancel_transaction task failed')
 
 
-@api.post("/encrypt_data", auth=auth)
-def encrypt_transaction_data(request, payload: TransactionPayloadSchema):
-    """Endpoint for tests, in production client is responsible to encrypt the payload."""
-    print(payload.json())
-    return SecureRequest(request).encrypt(payload.json())
+@api.get("/run_epicbox_listeners")
+def run_epicbox_listeners(request):
+    WalletPool.run_listener()
+    return utils.response(SUCCESS, 'listener started successfully')
 
 
-@api.post("/decrypt_data/data={encrypted_data}", auth=auth)
-def decrypt_data(request, encrypted_data: str):
-    return SecureRequest(request).decrypt(encrypted_data)
-
-
-@api.get("/get_pending_slates")
-def get_pending_slates(request):
-    WalletPool.get_pending_slates()
-    # print(request.POST)
+@api.get("/stop_epicbox_listeners")
+def stop_epicbox_listeners(request):
+    WalletPool.stop_listener()
+    return utils.response(SUCCESS, 'listener stopped successfully')
 
 
 @api.get("/rescan_and_clean_transactions")
