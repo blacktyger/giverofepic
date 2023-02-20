@@ -11,6 +11,7 @@ from website import views as website_views
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", project_api.urls),
+
     ]
 
 urlpatterns += [

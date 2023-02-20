@@ -6,13 +6,30 @@
         {%  include 'faucet/app.html' %}
 
     {%  else %}
-        {%  if not object.result %}
+        {%  if object.error %}
             {%  include 'giveaway/link_invalid.html' %}
         {% else %}
-            {{ object }}
+            {%  include 'giveaway/link_valid.html' %}
         {%  endif %}
 
     {%  endif %}
+
+    {# FOOTER #}
+    <div class="card-footer text-center mt-5">
+       <div class="row">
+           <div class="col-12">
+               <div class="small text-muted mt-0">
+                   <img src="{% static 'img/epicenter-logo-h500.png' %}" alt="epic-logo" height="20">
+
+                   <a class="mx-1" href="https://blacktyg3r.com" target="_blank">
+                        Created by <b>BT-LABS</b><sup><small>TM</small></sup>
+                   </a>
+                   | <a class="mx-1" href="https://epic.tech" target="_blank">epic.tech</a>
+                </div>
+           </div>
+       </div>
+    </div>
+
 {% endblock %}
 
 

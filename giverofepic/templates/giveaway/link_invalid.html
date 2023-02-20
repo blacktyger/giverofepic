@@ -1,8 +1,26 @@
 {% load static %}
 
-{# SPAWN ERROR TOAST AND REDIRECT TO THE HOME PAGE #}
 
-<script>
-    spawnToast('error', `{{ object.message }}`, 10000, true, '', 'center')
-        .then(() => {window.location.href = '/'})
-</script>
+{# ERROR FEEDBACK AND REDIRECT TO THE HOME PAGE #}
+<section class="claim-notification mb-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card bg-danger text-white text-center">
+                <div class="card-header" style="font-size: 1.3rem;">
+                    <span class="material-icons align-middle me-1" style="font-size: 1.8rem;">
+                        cancel
+                    </span>
+                    LINK IS INVALID
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+{#GIVER OF EPIC STATUE #}
+<div class="row my-3 justify-content-center">
+    <div class="col-auto text-center">
+        <img class="mt-2" src="{% static 'img/giverofepic_statue.png' %}" alt='STATUE'>
+    </div>
+</div>

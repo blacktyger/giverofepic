@@ -16,6 +16,65 @@ const spinnerHTML = `<div class="spinner-grow spinner-grow-sm align-middle" role
                      <div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>
                      <div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>`
 
+
+
+// PROCESS REQUEST TRANSACTION API CALL
+async function requestTransaction(amount, event, code) {
+    let taskFinished = false
+    let query = "http://127.0.0.1:8000/api/wallet/request_transaction"
+    let body = {
+        address: address.val(),
+        amount: amount,
+        event: event,
+        code: code
+    }
+
+     spawnToast('info', 'Connecting to the server..', 20000, false)
+
+    let response = await fetch(query, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(body)
+      }).then(checkStatus)
+        .catch(err => console.log(err))
+
+    if (response) {
+        console.log(response)
+        if (!response.error && 'result' in response) {
+            spawnToast('info', 'Sending transaction..', 20000, false)
+            let taskId = response.result.task_id
+            let task = await getTaskStatus(taskId)
+
+            while (!taskFinished) {
+                if (task.status === 'finished') {
+                    console.log(task)
+                    taskFinished = true
+                    spawnToast('success', 'Transaction sent successfully, refresh your wallet.', 10000, false)
+
+                } else if (task.status === 'failed') {
+                    taskFinished = true
+                    transactionFailedAlert(task)
+                    console.log(task.status)
+
+                } else if (task.status === 'queued') {
+                    console.log(task.status)
+                    await sleep(2000)
+                    task = await getTaskStatus(taskId)
+
+                } else if (task.status === 'started') {
+                    console.log(task.status)
+                    await sleep(2000)
+                    task = await getTaskStatus(taskId)
+                }
+            }
+        } else {
+            userRestrictedAlert(response.message)
+            await resetForm()
+        }
+    }
+}
+
+
 // PROCESS USER REQUEST
 async function sendTransaction() {
     let taskFinished = false
@@ -221,11 +280,17 @@ function transactionConfirmedAlert() {
 
 // FAILED TRANSACTION ALERT
 function transactionFailedAlert(reason) {
+    console.log(reason)
+    let r = reason
+
+    if (reason.message) {
+        r = reason.message
+    }
         Swal.fire({
         icon: 'warning',
         title: `UNSUCCESSFUL`,
         html:`
-             ${reason}
+             ${r}
              <hr class="mt-4" />
              <div class="my-2">
                  Need support? Join
@@ -267,23 +332,19 @@ async function finishedTaskHandler(task, type) {
 
 
 // SPAWN TOAST NOTIFICATION
-async function spawnToast(icon, title, timer=2500, confBtn=false,
-                          iconColor='white', position='top') {
+async function spawnToast(icon, title, timer=2500, confBtn=false, position='top') {
     const Toast = Swal.mixin({
         toast: true,
         position: position,
-        iconColor: iconColor,
-        // customClass: {
-        //     popup: 'colored-toast'
-        // },
         showConfirmButton: confBtn,
         timer: timer,
         timerProgressBar: true
     })
-    await Toast.fire({
+    toast = await Toast.fire({
         icon: icon,
         title: title,
     })
+    return toast
 }
 
 
@@ -348,7 +409,7 @@ function updateForm(conf_btn_html) {
 
 // RESET ADDRESS INPUT AND CONFIRM BUTTON STATE
 async function resetForm() {
-    receiveButton.html('RECEIVE')
+    receiveButton.html('CLAIM')
     receiveButton.timedDisable(5);
     await sleep(5000)
     receiveButton.attr('disabled', false);

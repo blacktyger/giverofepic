@@ -22,7 +22,7 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1',
                  '209.127.179.199', 'giverofepic.com', 'www.giverofepic.com']
 USED_HOST = f"{ALLOWED_HOSTS[1]}:8000"
 
-ALLOWED_HOSTS += ["e939-78-149-140-139.ngrok.io"]
+ALLOWED_HOSTS += ["7324-78-149-140-139.ngrok.io"]
 
 # Application definition
 

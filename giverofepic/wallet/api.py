@@ -32,12 +32,13 @@ async def initialize_transaction(request, payload: TransactionPayloadSchema):
     :return: JSON response
 
     payload = {
+          'code': 'sacsd#_546g'
           'amount': 0.01,
           'event': 'faucet',
           'address': 'esWenAmhSg9KEmEHMf5JtcuhacVteHHHekT3Xg4yyeoNVXVwo7AW'
     }
     """
-    print(request.auth)
+    print(await request.auth)
     try:
         # """ VALIDATE TRANSACTION PAYLOAD """ #
         tx_args = Transaction.validate_tx_args(payload.dict())
@@ -45,14 +46,15 @@ async def initialize_transaction(request, payload: TransactionPayloadSchema):
 
         # """ AUTHORIZE CLIENT CONNECTION (I.E. TIME-LOCK FUNCTION )""" #
         client = await Client.from_request(request, payload.address)
-        if not await client.is_allowed(): return await client.receiver.locked_msg()
+        if not await client.is_allowed():
+            return utils.response(ERROR, f"{await client.receiver.locked_msg()}")
 
         # """ FIND AVAILABLE WALLET INSTANCE """ #
-        wallet_instance = await WalletPool.get_available_wallet(wallet_type=payload.event)
+        wallet_instance = await WalletPool.get_available_wallet(event=payload.event)
         if not wallet_instance: return utils.response(ERROR, f"Can't process your request right now, please try again later.")
 
         # """ ENQUEUE WALLET TASK """ #
-        args = (payload.amount, payload.address, wallet_instance, client)
+        args = (payload.amount, payload.address, wallet_instance, client, payload.code)
         task_id, queue = WalletPool.enqueue_task(wallet_instance, tasks.send_new_transaction, *args)
 
         return utils.response(SUCCESS, 'task successfully enqueued', {'task_id': task_id, 'queue_len': queue.count})
@@ -70,7 +72,6 @@ async def cancel_transaction(request, payload: CancelPayloadSchema):
     :return: JSON Response
     """
     print(request.auth)
-    print(request.auth.__dict__)
 
     try:
         # Get transaction object

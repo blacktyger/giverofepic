@@ -6,17 +6,18 @@ import os
 from django.utils import timezone
 from django.db.models import Q
 from rq import get_current_job
+from rq.job import JobStatus
 import django_rq
 import django
 
 # Must be called before imports from Django components
-
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "giverofepic.settings")
 django.setup()
 
 from .default_settings import SUCCESS, ERROR, MINIMUM_CONFIRMATIONS, DELETE_AFTER_MINUTES
 from giverofepic.tools import get_secret_value
 from .epic_sdk import Wallet, utils
+from giveaway.models import Link
 from faucet.models import Client
 from .models import Transaction
 from .logger_ import get_logger
@@ -34,7 +35,7 @@ def send_new_transaction(*args):
     this_task = get_current_job()
     logger.info(f">> start working on task send_new_transaction {this_task.id}")
 
-    amount, address, wallet_instance, client = [pickle.loads(v) for v in args]
+    amount, address, wallet_instance, client, code = [pickle.loads(v) for v in args]
     wallet_instance.lock()  # Lock the wallet instance
 
     # Initialize Wallet class from PythonSDK
@@ -69,7 +70,18 @@ def send_new_transaction(*args):
 
         ## >> Create new Transaction object
         transaction = Transaction.objects.create(**tx_args)
-        response_ = wallet.post_tx_slate(address, init_tx_slate)
+
+        # Handle incorrect epic-wallet address
+        try:
+            response_ = wallet.post_tx_slate(address, init_tx_slate)
+        except BaseException:
+            this_task.meta['message'] = f"Invalid wallet address."
+            this_task.save_meta()
+            this_task.set_status(JobStatus.FAILED)
+            logger.warning(this_task.meta['message'])
+            wallet.cancel_tx_slate(slate=init_tx_slate)
+            wallet_instance.unlock()  # Release wallet
+            return
 
         if response_:
             wallet_instance.last_transaction = transaction
@@ -77,6 +89,11 @@ def send_new_transaction(*args):
             client.update_activity(status=transaction.status)
             response = utils.response(SUCCESS, 'post tx success', {'tx_slate_id': transaction.tx_slate_id})
             logger.info(response)
+            link = Link.objects.get(code=code)
+            link.claimed = True
+            link.address = address
+            link.claim_date = timezone.now()
+            link.save()
         else:
             client.update_activity(status="transaction failed (initialize stage)")
             transaction.remove_client_data()

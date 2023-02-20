@@ -5,6 +5,7 @@ class TransactionPayloadSchema(Schema):
     address: str
     amount: float | str | int
     event: str
+    code: str
 
 
 class CancelPayloadSchema(Schema):

@@ -1,77 +1,8 @@
 {% load static %}
 
-<div class="row mt-2 justify-content-center">
-    <div class="col-11 px-0">
 
-        {# INFO #}
-        <div class="row justify-content-between">
-            <div class="col-12 text-start text-secondary ms-2">
-                <span class="fs-1">
-                    <span class="material-icons align-middle"
-                          style="font-size: 2.5rem;">
-                        wallet
-                    </span>
-                    Wallet Address
-                </span>
-                <hr class="m-0 mt-1 me-2 mb-2 text-muted"/>
-                <span class="text-muted">
-                    Provide
-                    <a href="/">
-                        <img class="rounded" src="{% static 'img/photo_2022-12-27_16-46-56.jpg' %}" alt='.' height="25px">
-                        <b>Epic-Pay</b>
-                    </a> or
-                    <a href="/">
-                        <img class="ms-1 rounded" src="{% static 'img/stack-wallet-icon.png' %}" alt='.' height="25px">
-                        <b>Stack-Wallet</b>
-                    </a> address.
-                </span>
-            </div>
-        </div>
+{%  include 'address_form.html' %}
 
-        <div class="col-12">
-            <button class="btn btn-danger" onclick="test_crypto_function()">
-                TEST CRYPTO
-            </button>
-        </div>
-
-        {# ADDRESS INPUT #}
-        <div class="input-group ps-2 pt-2 mt-2">
-            <span class="input-group-text" id="basic-addon2">
-                <span class="material-icons addressIcon fs-1">done_all</span>
-            </span>
-            <input type="text" class="form-control p-2 walletAddress" required
-                   placeholder="Address.."
-                   aria-describedby="basic-addon2"
-                   aria-label="walletAddress"
-                   name="walletAddress" id="walletAddress">
-        </div>
-
-        {# USER FEEDBACK #}
-        <div class="text-end mt-1" style="height: 15px;">
-            <span class="text-muted addressFeedback"></span>
-        </div>
-    </div>
-</div>
-
-{# PROGRESS FEEDBACK #}
-<div class="row justify-content-center">
-    <div class="col-auto">
-        <div class="text-muted text-center feedbackField fs-6 mb-3"
-             style="height: 20px">
-
-        </div>
-    </div>
-</div>
-
-{# RECEIVE BUTTON #}
-<div class="row justify-content-center">
-    <div class="col-11 text-center p-0 ps-2">
-        <button class="btn btn-success btn-lg bg-green w-100"
-                disabled id="receiveButton" onClick="sendTransaction()">
-            RECEIVE
-        </button>
-    </div>
-</div>
 
 {#GIVER OF EPIC STATUE #}
 <div class="row my-3 justify-content-center">
@@ -79,6 +10,7 @@
         <img class="mt-2" src="{% static 'img/giverofepic_statue.png' %}" alt='STATUE'>
     </div>
 </div>
+
 
 {# FOOTER #}
 <div class="card-footer text-center mt-5">
@@ -95,6 +27,4 @@
        </div>
    </div>
 </div>
-
-<script src="{%  static '/scripts/input_listeners.js' %}"></script>
 

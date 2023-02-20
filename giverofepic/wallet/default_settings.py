@@ -7,7 +7,7 @@ ATTEMPTS_INTERVAL = 3
 NUM_OF_ATTEMPTS = 3
 
 MINIMUM_CONFIRMATIONS = 1
-TRANSACTION_ARGS = ('address', 'amount', 'event')
+TRANSACTION_ARGS = ('address', 'amount', 'event', 'code')
 DEFAULT_FEE = 0.008
 MAX_AMOUNT = 0.1
 
