@@ -1,5 +1,4 @@
-from ninja import Schema, ModelSchema
-from .models import *
+from ninja import Schema
 
 
 class CancelTransaction(Schema):
@@ -7,8 +6,8 @@ class CancelTransaction(Schema):
     tx_slate_id: str
 
 
-class TransactionSchema(ModelSchema):
-    class Config:
-        model = Transaction
-        model_fields = ["amount", "receiver_address"]
+class TxRequestSchema(Schema):
+    receiver_address: str
+    code: str
+    data: dict | None = {}
 

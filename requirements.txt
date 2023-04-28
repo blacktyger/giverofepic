@@ -34,3 +34,6 @@ humanfriendly
 passpy
 killport
 sentry-sdk
+django-ninja-apikey
+asyncprocess
+asyncprocess

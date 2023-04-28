@@ -15,9 +15,10 @@ DEBUG = True
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "giverofepic.settings")
 
-ALLOWED_HOSTS = ['*']
-# Application definition
+ALLOWED_HOSTS = ['*', 'localhost']
+USED_HOST = f"{ALLOWED_HOSTS[1]}:8000"
 
+# Application definition
 INSTALLED_APPS = [
     "admin_interface",
     "colorfield",
@@ -27,15 +28,19 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'ninja_apikey',
     'django_rq',
+    'giveaway',
     'website',
     'wallet',
     ]
 
 RQ_QUEUES = {
     'default': {
-        'HOST': '209.127.179.199',
-        'PORT': 6380,
+        'HOST': 'redis-19490.c10.us-east-1-3.ec2.cloud.redislabs.com',
+        'PORT': 19490,
+        'USERNAME': 'default',
+        'PASSWORD': 'EXCUFGFOeyBRjEtGSx6Z5OwyK5jTMBLM',
         'DB': 0,
         'DEFAULT_TIMEOUT': 360,
         },

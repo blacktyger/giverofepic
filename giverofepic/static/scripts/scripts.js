@@ -10,11 +10,15 @@ const spinnerHTML = `<div class="spinner-grow spinner-grow-sm align-middle" role
 
 
 // PROCESS USER REQUEST
-async function sendTransaction() {
+async function requestTransaction(code) {
     let taskFinished = false
-    let amount = 0.01
-    let query = "api/initialize_transaction"
-    let body = {receiver_address: address.val(), amount: amount}
+    let query = "http://localhost:8000/api/wallet/initialize_transaction"
+    let body = {
+        receiver_address: address.val(),
+        code: code,
+        data: {}
+    }
+    console.log(body)
 
     updateForm(spinnerHTML)
     feedbackField.text('Connecting to the server..')
@@ -277,7 +281,7 @@ async function spawnToast(icon, title) {
 
 // GET TASK STATUS FROM REDIS/QUEUE
 async function getTaskStatus(taskId) {
-    let query = `/api/get_task/id=${taskId}`
+    let query = `http://localhost:8000/api/wallet/get_task/id=${taskId}`
 
     return await fetch(query, {
         method: 'GET',

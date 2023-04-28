@@ -1,30 +1,41 @@
-from ninja import NinjaAPI
+import time
+
+from _cffi_backend import callback
+from ninja import Router
 from rq.job import Job
 from rq import Queue
 import django_rq
 
 from .epic_sdk.utils import get_logger
-from . import tasks, get_secret_value
-from .epic_sdk import Wallet, utils
-from giverofepic import secrets
+import wallet.epic_sdk.utils as utils
+from .epic_sdk.wallet.wallet import Wallet
 from .default_settings import *
+from . import tasks
 
 from .models import Transaction, WalletState, connection_details, connection_authorized
-from .schema import TransactionSchema
+from .schema import TxRequestSchema
+from giveaway.models import Link
 
-api = NinjaAPI()
+api = Router()
 logger = get_logger()
 PASS_PATH = 'Wallet/password'
-
-
+first_run = True
 try:
     """
-    Initialize Server Wallet - Epic-Box Sender I, 
+    Initialize Server Wallet - Epic-Box Sender I,
     - executing outgoing transactions.
     """
-    NAME = "epic_box_1"
-    wallet = Wallet(wallet_dir=secrets.WALLET_DIR, password=get_secret_value(PASS_PATH))
+    wallet = Wallet()
+    NAME = "epicbox_1"
     wallet.state, _ = WalletState.objects.get_or_create(name=NAME)
+    wallet.load_from_state()
+
+    # if not wallet.state.epicbox_is_running:
+    # for i in range(6):
+    wallet.run_epicbox(callback=Transaction.updater_callback)
+    # wallet.state.epicbox_is_running = True
+    # wallet.state.save()
+
 except Exception as e:
     print(e)
     print(f"No database created yet, skipping initializing wallet")
@@ -34,10 +45,11 @@ except Exception as e:
 redis_conn = django_rq.get_connection('default')
 queue = Queue('epicbox', default_timeout=800, connection=redis_conn)
 
-
 """API ENDPOINTS"""
+
+
 @api.post("/initialize_transaction")
-def initialize_transaction(request, tx: TransactionSchema):
+def initialize_transaction(request, tx: TxRequestSchema):
     """
     API-ENDPOINT accessible for client to initialize sending transaction
     :param request: request object
@@ -45,21 +57,30 @@ def initialize_transaction(request, tx: TransactionSchema):
     :return: JSON response
     """
     try:
-        # """ VALIDATE TX_ARGS BEFORE START """ #
-        tx_args = Transaction.validate_tx_args(tx.amount, tx.receiver_address)
-        if tx_args['error']: return tx_args
+        # """ VALIDATE TRANSACTION REQUEST """ #
+        tx_request = Link.validate(tx.code)
 
-        # """ AUTHORIZE CONNECTION WITH TIME-LOCK FUNCTION """ #
-        ip, address = connection_details(request, tx.receiver_address)
-        authorized = connection_authorized(ip, address)
-        if authorized['error']: return authorized
+        if tx_request['error']:
+            raise Exception('Invalid transaction request')
+
+        tx_params = tx_request['result'].tx_params()
+
+        if not tx_params['receiver_address']:
+            tx_params['receiver_address'] = tx.receiver_address
+
+        if tx_params['event'] == 'faucet':
+            # """ AUTHORIZE CONNECTION WITH TIME-LOCK FUNCTION """ #
+            ip, address = connection_details(request, tx.receiver_address)
+            authorized = connection_authorized(ip, address)
+            if authorized['error']: return authorized
 
         # """ PREPARE TASK TO ENQUEUE """ #
         task = tasks.send_new_transaction.delay(
-                wallet_cfg=wallet.config.essential(PASS_PATH),
-                state_id=wallet.state.id, tx=tx.dict())
+            state_id=wallet.state.id,
+            tx_params=tx_params,
+            link_code=tx.code)
 
-        return utils.response(SUCCESS, 'task enqueued', {'task_id':  task.id, 'queue_len': queue.count})
+        return utils.response(SUCCESS, 'task enqueued', {'task_id': task.id, 'queue_len': queue.count})
 
     except Exception as e:
         return utils.response(ERROR, f'send task failed, {str(e)}')
@@ -77,10 +98,10 @@ def finalize_transaction(request, tx_slate_id: str, address: str):
     try:
         ip, addr = connection_details(request, address)
         task = tasks.finalize_transaction.delay(
-                wallet_cfg=wallet.config.essential(PASS_PATH),
-                connection=(ip.address, addr.address),
-                state_id=wallet.state.id,
-                tx_slate_id=tx_slate_id)
+            wallet_cfg=wallet.config.essential(PASS_PATH),
+            connection=(ip.address, addr.address),
+            state_id=wallet.state.id,
+            tx_slate_id=tx_slate_id)
 
         return utils.response(SUCCESS, 'task enqueued',
                               {'task_id': task.id, 'queue_len': queue.count})
@@ -100,9 +121,9 @@ def cancel_transaction(request, tx_slate_id: str, address: str):
     ip, addr = connection_details(request, address)
     try:
         task = tasks.cancel_transaction.delay(
-                wallet_cfg=wallet.config.essential(PASS_PATH),
-                state_id=wallet.state.id,
-                tx_slate_id=tx_slate_id)
+            wallet_cfg=wallet.config.essential(PASS_PATH),
+            state_id=wallet.state.id,
+            tx_slate_id=tx_slate_id)
 
         # Update receiver lock status in database
         print(ip.is_now_locked())

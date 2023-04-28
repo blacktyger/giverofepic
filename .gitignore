@@ -15,10 +15,11 @@ giverofepic/website/migrations/__pycache__/
 /setup.py
 /Pipfile.lock
 .idea/
-giverofepic/db.sqlite3
+giverofepic/db.sq
 *.sqlite3
 */__pycache__/
 */*/__pycache__/
 */*/*/__pycache__/
-/giverofepic/wallet/migrations/
 /dev_notes.md
+/giverofepic/giveaway/migrations/
+/giverofepic/wallet_*

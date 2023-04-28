@@ -1,0 +1,119 @@
+{% load static %}
+
+<section class="claim-notification mb-4">
+    <div class="row">
+        <div class="col-12">
+            {%  if link.claimed %}
+
+                <div class="card bg-warning text-white text-center">
+                    <div class="card-header" style="font-size: 1.3rem;">
+                        <span class="material-icons align-middle me-1" style="font-size: 1.8rem;">
+                            cancel
+                        </span>
+                        LINK ALREADY CLAIMED
+                    </div>
+                </div>
+
+            {%  elif link.expires < now %}
+
+                <div class="card bg-danger text-white text-center">
+                    <div class="card-header" style="font-size: 1.3rem;">
+                        <span class="material-icons align-middle me-1" style="font-size: 1.8rem;">
+                            cancel
+                        </span>
+                        LINK EXPIRED
+                    </div>
+                </div>
+
+            {%  else %}
+
+                <div class="card bg-success text-white text-center">
+                    <div class="card-header" style="font-size: 1.3rem;">
+                        <span class="material-icons align-middle me-1" style="font-size: 1.8rem;">
+                            check_circle
+                        </span>
+                        LINK IS VALID
+                    </div>
+                </div>
+
+            {%  endif %}
+        </div>
+    </div>
+</section>
+
+<section class="claim-details mb-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card bg-dark text-white">
+                <div class="card-header">
+                    <span class="material-icons me-1" style="font-size: 1.5rem;">info</span>
+                    CLAIM DETAILS
+                </div>
+                <div class="card-body">
+                    <table>
+                        <tr>
+                            <td>Event:</td>
+                            <td></td>
+                            <td>{{ link.event.capitalize }}</td>
+                        </tr>
+                        <tr>
+                            <td>Reward:</td>
+                            <td></td>
+                            <td>{{ link.amount }} EPIC</td>
+                        </tr>
+{#                        <tr>#}
+{#                            <td>Created:</td>#}
+{#                            <td></td>#}
+{#                            <td>{{ link.timestamp }}</td>#}
+{#                        </tr>#}
+                        {% if not link.claim_date %}
+                            <tr>
+                                <td>Valid Until:</td>
+                                <td style="width: 10px"></td>
+                                <td>{{ link.expires }}</td>
+                            </tr>
+                        {%  else %}
+                            <tr>
+                                <td>Claimed:</td>
+                                <td style="width: 10px"></td>
+                                <td>{{ link.claim_date }}</td>
+                            </tr>
+                            <tr>
+                                <td>Address:</td>
+                                <td style="width: 10px"></td>
+                                <td>{{ link.address }}</td>
+                            </tr>
+                        {%  endif %}
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+{# IF LINK IS VALID SHOW ADDRESS INPUT #}
+{% if not link.claimed and link.expires > now %}
+
+    <section class="address-form">
+        <div class="row">
+            <div class="col-12">
+                {%  include 'address_form.html' %}
+            </div>
+        </div>
+    </section>
+
+{# ELSE SHOW GIVER OF EPIC STATUE #}
+{%  else %}
+
+    <div class="row my-3 justify-content-center">
+        <div class="col-auto text-center">
+            <img class="mt-2" src="{% static 'img/giverofepic_statue.png' %}" alt='STATUE'>
+        </div>
+    </div>
+
+{%  endif %}
+
+
+<script src="{%  static '/scripts/scripts.js' %}"></script>
+{#<script src="{%  static '/scripts/input_listeners.js' %}"></script>#}

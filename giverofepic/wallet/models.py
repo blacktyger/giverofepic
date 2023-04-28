@@ -1,5 +1,3 @@
-import platform
-import decimal
 import json
 import time
 import uuid
@@ -10,16 +8,17 @@ from ipware import get_client_ip
 from django.db import models
 import humanfriendly
 
-from giverofepic.secrets import WALLET_DIR
 from wallet.epic_sdk import utils
 from wallet.default_settings import *
+from wallet.epic_sdk.utils import parse_uuid, logger
 
 
 class WalletState(models.Model):
     id = models.UUIDField(primary_key=True, unique=True, default=uuid.uuid4)
     name = models.CharField(max_length=128, default='epic_wallet')
     is_locked = models.BooleanField(default=False)
-    wallet_dir = models.CharField(max_length=128, default=WALLET_DIR)
+    wallet_dir = models.CharField(max_length=128, default='')
+    epicbox_is_running = models.BooleanField(default=False)
 
     def lock(self):
         self.is_locked = True
@@ -79,13 +78,135 @@ class IPAddr(Address):
 
 class Transaction(models.Model):
     receiver_address = models.CharField(max_length=256)
+    tx_slate_id = models.UUIDField(blank=True, null=True)
+    wallet_id = models.CharField(max_length=256, default='54-45-54')
+    timestamp = models.DateTimeField(default=timezone.now)
+    archived = models.BooleanField(default=False)
+    amount = models.DecimalField(max_digits=24, decimal_places=8)
+    status = models.CharField(max_length=256)
+    height = models.IntegerField(blank=True, null=True)
+    event = models.CharField(max_length=32, default='giveaway')
+
+    def update_from_slate(self, slate: dict):
+        self.tx_slate_id = slate['id']
+        self.height = slate['height']
+        self.save()
+
+    def update_status(self, status: str):
+        self.status = status
+        self.save()
+
+    @classmethod
+    def updater_callback(cls, line: str, listener):
+        # TODO: Search in transactions by slate_id objects and update
+        # logger.info(line)
+        tx_slate_id = parse_uuid(line)
+
+        if tx_slate_id and 'wallet_' not in line:
+            tx = cls.objects.filter(tx_slate_id=tx_slate_id[0]).first()
+            logger.critical(line)
+            if "finalized successfully" in line:
+                tx.update_status('finalized')
+            elif 'error' in line:
+                tx.update_status('failed')
+            else:
+                # logger.warning(f"Received new transaction : {tx_slate_id}")
+                logger.warning(line)
+
+    @staticmethod
+    def validate_tx_args(amount: float | int | str, receiver_address: str, event: str):
+        receiver_address = receiver_address.split('@')[0]
+        print(receiver_address)
+
+        try:
+            if 0.00000001 > float(amount) >= MAX_AMOUNT:
+                return utils.response(ERROR, f'Invalid amount (0 < {amount} < {MAX_AMOUNT})')
+            elif len(receiver_address.strip()) != 52:
+                return utils.response(ERROR, 'Invalid receiver_address')
+
+            if event not in VALID_EVENT_NAMES:
+                return utils.response(ERROR, 'Invalid event name')
+
+        except Exception as e:
+            return utils.response(ERROR, f'Invalid tx_args, {e}')
+
+        return utils.response(SUCCESS, 'tx_args valid')
+
+    def __str__(self):
+        return f"Transaction(tx_status={self.status})"
+
+
+def connection_details(request, addr, update: bool = False):
+    address, created = ReceiverAddr.objects.get_or_create(address=addr)
+    address.last_activity = timezone.now()
+
+    ip, is_routable = get_client_ip(request)
+    if ip:
+        ip, created = IPAddr.objects.get_or_create(address=ip)
+        ip.last_activity = timezone.now()
+
+    if update: update_connection_details(ip, address)
+
+    return ip, address
+
+
+def update_connection_details(ip, address):
+    ip_, created = IPAddr.objects.get_or_create(address=ip)
+    address_, created = ReceiverAddr.objects.get_or_create(address=address)
+
+    ip_.last_success_tx = timezone.now()
+    ip_.save()
+
+    address_.last_success_tx = timezone.now()
+    address_.save()
+
+    return ip, address
+
+
+def connection_authorized(ip, address):
+    if ip.is_now_locked():
+        return utils.response(ERROR, ip.locked_msg())
+
+    if address.is_now_locked():
+        return utils.response(ERROR, address.locked_msg())
+
+    return utils.response(SUCCESS, 'authorized')
+
+
+def get_wallet_status(wallet):
+    """
+    :param wallet:
+    :return:
+    """
+    re_try = NUM_OF_ATTEMPTS
+
+    # Refresh wallet state from DB
+    WalletState.objects.get(id=wallet.state.id)
+
+    # TRY NUM_OF_ATTEMPTS WITH ATTEMPTS_INTERVAL TILL FAIL
+    while WalletState.objects.get(id=wallet.state.id).is_locked and re_try:
+        print(f"locked, {re_try} re-try attempts left ")
+        re_try -= 1
+        time.sleep(ATTEMPTS_INTERVAL)
+
+    if WalletState.objects.get(id=wallet.state.id).is_locked:
+        return utils.response(ERROR, wallet.state.error_msg())
+
+    wallet.state = WalletState.objects.get(id=wallet.state.id)
+    return utils.response(SUCCESS, 'wallet ready')
+
+
+# =================================================================
+
+"""
+
+class Transaction(models.Model):
+    receiver_address = models.CharField(max_length=256)
     encrypted_slate = models.JSONField(blank=True, null=True)
     sender_address = models.CharField(max_length=256)
     wallet_db_id = models.IntegerField()
-    tx_slate_id = models.UUIDField()
     timestamp = models.DateTimeField()
     archived = models.BooleanField(default=False)
-    tx_type = models.CharField(max_length=24)
     amount = models.DecimalField(max_digits=24, decimal_places=8)
     status = models.CharField(max_length=256)
 
@@ -126,78 +247,4 @@ class Transaction(models.Model):
             }
 
         return response
-
-    @staticmethod
-    def validate_tx_args(amount: float | int | str, receiver_address: str):
-        try:
-            if 0.00000001 > float(amount) >= MAX_AMOUNT:
-                return utils.response(ERROR, f'Invalid amount (0 < {amount} < {MAX_AMOUNT})')
-            elif len(receiver_address.strip()) != 52:
-                return utils.response(ERROR, 'Invalid receiver_address')
-
-        except Exception as e:
-            return utils.response(ERROR, f'Invalid tx_args, {e}')
-
-        return utils.response(SUCCESS, 'tx_args valid')
-
-    def __str__(self):
-        return f"Transaction(tx_status={self.status}, tx_slate_id={self.tx_slate_id})"
-
-
-def connection_details(request, addr, update: bool = False):
-    address, created = ReceiverAddr.objects.get_or_create(address=addr)
-    address.last_activity = timezone.now()
-
-    ip, is_routable = get_client_ip(request)
-    if ip:
-        ip, created = IPAddr.objects.get_or_create(address=ip)
-        ip.last_activity = timezone.now()
-
-    if update: update_connection_details(ip, address)
-
-    return ip, address
-
-
-def update_connection_details(ip, address):
-    ip_, created = IPAddr.objects.get_or_create(address=ip)
-    address_, created = ReceiverAddr.objects.get_or_create(address=address)
-
-    ip_.last_success_tx = timezone.now()
-    ip_.save()
-
-    address_.last_success_tx = timezone.now()
-    address_.save()
-
-    return ip, address
-
-def connection_authorized(ip, address):
-    if ip.is_now_locked():
-        return utils.response(ERROR, ip.locked_msg())
-
-    if address.is_now_locked():
-        return utils.response(ERROR, address.locked_msg())
-
-    return utils.response(SUCCESS, 'authorized')
-
-
-def get_wallet_status(wallet):
-    """
-    :param wallet:
-    :return:
-    """
-    re_try = NUM_OF_ATTEMPTS
-
-    # Refresh wallet state from DB
-    WalletState.objects.get(id=wallet.state.id)
-
-    # TRY NUM_OF_ATTEMPTS WITH ATTEMPTS_INTERVAL TILL FAIL
-    while WalletState.objects.get(id=wallet.state.id).is_locked and re_try:
-        print(f"locked, {re_try} re-try attempts left ")
-        re_try -= 1
-        time.sleep(ATTEMPTS_INTERVAL)
-
-    if WalletState.objects.get(id=wallet.state.id).is_locked:
-        return utils.response(ERROR, wallet.state.error_msg())
-
-    wallet.state = WalletState.objects.get(id=wallet.state.id)
-    return utils.response(SUCCESS, 'wallet ready')
+"""
