@@ -1,6 +1,8 @@
 from pathlib import Path
 import os
 
+from giverofepic.secrets import giveaway_api_key
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -28,6 +30,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.humanize',
     'ninja_apikey',
     'django_rq',
     'giveaway',
@@ -134,7 +137,10 @@ SENTRY_DSN = "https://9238840ac47c4289a2035ba9d797566b@o4504589365411840.ingest.
 if os.getenv('DJANGO_DEVELOPMENT') == 'true':
     # DEBUG = False
     SENTRY_DSN = "https://6f6cefddc3d849dc99dafaa8c9c0c6be@o4504589365411840.ingest.sentry.io/4504589394706432"
-    # ALLOWED_HOSTS = ['localhost', '209.127.179.199', 'giverofepic.com', 'www.giverofepic.com']
+    ALLOWED_HOSTS = ['localhost', 'giverofepic.com', 'www.giverofepic.com', '209.127.179.199']
+    USED_HOST = f"{ALLOWED_HOSTS[1]}"
+    GIVEAWAY_API_KEY = giveaway_api_key
+
     RQ_QUEUES = {
         'default': {
             'HOST': '127.0.0.1',

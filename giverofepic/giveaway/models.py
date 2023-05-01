@@ -1,22 +1,17 @@
 from datetime import timedelta
 
 from django.contrib.auth.models import User
-from django.db import models
-import requests
-
 from django.utils import timezone
+from django.db import models
+
 
 from giverofepic.settings import USED_HOST
 from giverofepic.tools import Encryption, get_short
-from wallet.default_settings import (
-    ERROR, SUCCESS, LOCAL_WALLET_API_URL, API_KEY_HEADER, GIVEAWAY_API_KEY,
-    )
+from wallet.default_settings import (ERROR, SUCCESS)
 
-from wallet.epic_sdk import utils
 from wallet.epic_sdk.utils import logger
-
-
-# ZZXjwhgg.su83zhGYnmMM9f9cEi1DQWKaobzA4uaQHH1FL0qyhhugEzXuvK278LU7
+from wallet.epic_sdk import utils
+from wallet.models import Transaction
 
 
 class Link(models.Model):
@@ -33,6 +28,8 @@ class Link(models.Model):
     amount = models.DecimalField(max_digits=16, decimal_places=3, help_text="amount of currency to send")
     event = models.CharField(max_length=64, default='giveaway')
     code = models.CharField(max_length=64, default='')
+
+    transaction = models.OneToOneField(Transaction, on_delete=models.DO_NOTHING, null=True, blank=True)
 
     def get_url(self):
         """https://giverofepic.com/claim/GIVEAWAY_0.01-Vex_hp45tR"""

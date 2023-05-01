@@ -17,4 +17,5 @@ urlpatterns += [
     path('', website_views.HomeView.as_view(), name='home'),
     path('django-rq/', include('django_rq.urls')),
     path('claim/<code>', giveaway_views.ClaimLinkView.as_view(), name='giveaway'),
+    path('claim/', giveaway_views.ClaimLinkView.as_view(), name='giveaway'),
     ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

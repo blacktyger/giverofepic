@@ -1,17 +1,16 @@
-import json
 import time
 import uuid
 
-from datetime import datetime, timedelta
 from django.utils import timezone
 from ipware import get_client_ip
+from datetime import timedelta
 from django.db import models
 import humanfriendly
 
-from giverofepic.tools import get_short
-from wallet.epic_sdk import utils
-from wallet.default_settings import *
 from wallet.epic_sdk.utils import parse_uuid, logger
+from giverofepic.tools import get_short
+from wallet.default_settings import *
+from wallet.epic_sdk import utils
 
 
 class WalletState(models.Model):
@@ -117,13 +116,17 @@ class Transaction(models.Model):
 
     @staticmethod
     def validate_tx_args(amount: float | int | str, receiver_address: str, event: str):
-        receiver_address = receiver_address.split('@')[0]
+        receiver_address = receiver_address.split('@')[0].strip()
+
+        if 'http' in receiver_address:
+            receiver_address = receiver_address.split('//')[-1]
+
         print(receiver_address)
 
         try:
-            if 0.00000001 > float(amount) >= MAX_AMOUNT:
-                return utils.response(ERROR, f'Invalid amount (0 < {amount} < {MAX_AMOUNT})')
-            elif len(receiver_address.strip()) != 52:
+            if 0.00000001 > float(amount) <= MAX_AMOUNT:
+                return utils.response(ERROR, f'Invalid amount (0 > {amount} < {MAX_AMOUNT})')
+            elif len(receiver_address) != 52:
                 return utils.response(ERROR, 'Invalid receiver_address')
 
             if event not in VALID_EVENT_NAMES:

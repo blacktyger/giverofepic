@@ -22,7 +22,7 @@ def get_secret_value(path: str):
 def get_short(address, extra_short: bool = False):
     address = str(address)
     try:
-        return f"{address[0:4]}..{address[-4:]}" if not extra_short else f"{address[0:4]}.."
+        return f"{address[0:4]}..{address.split('@')[0][-4:]}" if not extra_short else f"{address[0:4]}.."
     except Exception:
         return address
 
