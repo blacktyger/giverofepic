@@ -8,6 +8,7 @@ from ipware import get_client_ip
 from django.db import models
 import humanfriendly
 
+from giverofepic.tools import get_short
 from wallet.epic_sdk import utils
 from wallet.default_settings import *
 from wallet.epic_sdk.utils import parse_uuid, logger
@@ -18,7 +19,7 @@ class WalletState(models.Model):
     name = models.CharField(max_length=128, default='epic_wallet')
     is_locked = models.BooleanField(default=False)
     wallet_dir = models.CharField(max_length=128, default='')
-    epicbox_is_running = models.BooleanField(default=False)
+    epicbox_pid = models.IntegerField(default=0, null=True)
 
     def lock(self):
         self.is_locked = True
@@ -27,6 +28,9 @@ class WalletState(models.Model):
     def unlock(self):
         self.is_locked = False
         self.save()
+
+    def update_epicbox(self, pid: str):
+        pass
 
     def error_msg(self):
         return "Wallet can not process your request now, try again later."
@@ -86,32 +90,30 @@ class Transaction(models.Model):
     status = models.CharField(max_length=256)
     height = models.IntegerField(blank=True, null=True)
     event = models.CharField(max_length=32, default='giveaway')
+    data = models.JSONField(null=True, blank=True, default=dict)
 
     def update_from_slate(self, slate: dict):
         self.tx_slate_id = slate['id']
         self.height = slate['height']
         self.save()
 
-    def update_status(self, status: str):
-        self.status = status
+    def update_params(self, **kwargs):
+        """Update Transaction parameters in the database"""
+        for k, v in kwargs.items():
+            setattr(self, k, v)
         self.save()
 
     @classmethod
-    def updater_callback(cls, line: str, listener):
-        # TODO: Search in transactions by slate_id objects and update
-        # logger.info(line)
+    def updater_callback(cls, line: str):
         tx_slate_id = parse_uuid(line)
 
         if tx_slate_id and 'wallet_' not in line:
             tx = cls.objects.filter(tx_slate_id=tx_slate_id[0]).first()
             logger.critical(line)
             if "finalized successfully" in line:
-                tx.update_status('finalized')
+                tx.update_params(status='finalized')
             elif 'error' in line:
-                tx.update_status('failed')
-            else:
-                # logger.warning(f"Received new transaction : {tx_slate_id}")
-                logger.warning(line)
+                tx.update_params(status='failed')
 
     @staticmethod
     def validate_tx_args(amount: float | int | str, receiver_address: str, event: str):
@@ -133,7 +135,16 @@ class Transaction(models.Model):
         return utils.response(SUCCESS, 'tx_args valid')
 
     def __str__(self):
-        return f"Transaction(tx_status={self.status})"
+        if self.status == 'finalized':
+            icon = "🟢"
+        elif self.status == 'pending':
+            icon = "🟡"
+        elif self.status == 'failed':
+            icon = "🔴"
+        else:
+            icon = "🔘"
+
+        return f"{icon} {self.amount} -> {get_short(self.receiver_address)}"
 
 
 def connection_details(request, addr, update: bool = False):

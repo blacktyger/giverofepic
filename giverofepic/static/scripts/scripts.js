@@ -1,5 +1,5 @@
 let feedbackField = $('.feedbackField')
-let confirmButton = $('#confirmButton')
+let confirmButton = $('#receiveButton')
 let addressIcon = $('.addressIcon')
 let address = $('#walletAddress')
 
@@ -7,7 +7,6 @@ const spinnerHTMLsm = `<div class="spinner-border spinner-border-sm fs-6" role="
 const spinnerHTML = `<div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>
                      <div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>
                      <div class="spinner-grow spinner-grow-sm align-middle" role="status"></div>`
-
 
 // PROCESS USER REQUEST
 async function requestTransaction(code) {
@@ -19,7 +18,7 @@ async function requestTransaction(code) {
         data: {}
     }
     console.log(body)
-
+    toast = spawnToast('info', `${spinnerHTMLsm} Preparing your transaction..`)
     updateForm(spinnerHTML)
     feedbackField.text('Connecting to the server..')
 
@@ -45,12 +44,19 @@ async function requestTransaction(code) {
                 if (task.status === 'finished') {
                     feedbackField.text('')
                     taskFinished = true
-                    await finishedTaskHandler(task, 'sent')
+                    console.log(task)
+                    if (task.result.error) {
+                        transactionFailedAlert()
+                    } else {
+                        await spawnToast('success', 'Transaction sent successfully!', 3500)
+                        resetForm()
+                        location.reload()
+                    }
 
                 } else if (task.status === 'failed') {
                     feedbackField.text('')
                     taskFinished = true
-                    transactionFailedAlert(task)
+                    transactionFailedAlert()
                     console.log(task.status)
 
                 } else if (task.status === 'queued') {
@@ -108,16 +114,19 @@ async function transactionInitializedAlert(task) {
         html:
             `<div class="card mt-1 bg-blue text-light">
                  <div class="card-img">
-                    <img class="card-img" src="static/img/stack-wallet.png" alt="img">
+                    <img class="card-img" src="receiving_tx.png" alt="img">
                  </div>
                  <div class="card-body">
-                     Open or refresh your wallet and confirm incoming transaction.
+                     Keep your wallet open until you can see an incoming transaction.
                      <a href="#" data-bs-toggle="tooltip" data-bs-title="
-                        It will be done automatically after full synchronization of the wallet, you may need to refresh the history.">
+                        If it won't appear after few minutes you may need to refresh (drag down) the wallet.">
                         <b><sup><i class="fa-solid fa-circle-info text-light"></i></sup></b>
                      </a>
+                     If the transaction did not appear, or it is not displayed as 
+                     <span class="text-success"></span> 'Received'</span>
+                     after 10 minutes please use the <span class="text-danger">NOT RECEIVED</span> button.
                      <br><br>
-                     <p>After <span><b>180</b></span> seconds transaction will be automatically cancelled.</p>
+<!--                     <p>After <span><b>180</b></span> seconds transaction will be automatically cancelled.</p>-->
                  </div>
                  <div class="card-footer mb-0 pb-0">
                      <small class="text-light-50"><pre>ID: ${task.result.result['tx_slate_id']}</pre></small>
@@ -127,11 +136,11 @@ async function transactionInitializedAlert(task) {
         position: 'center',
         timerProgressBar: true,
         showCancelButton: true,
-        cancelButtonText: `<i class="fa fa-xmark"></i> CANCEL TRANSACTION`,
+        cancelButtonText: `<i class="fa fa-xmark"></i> NOT RECEIVED`,
         allowOutsideClick: false,
         cancelButtonColor: 'orange',
         showConfirmButton: true,
-        confirmButtonText: `<i class="fa fa-check"></i> CONFIRM`,
+        confirmButtonText: `<i class="fa fa-check"></i> RECEIVED`,
         confirmButtonColor: 'green',
 
         didOpen: () => {
@@ -213,12 +222,13 @@ function transactionConfirmedAlert() {
 
 
 // FAILED TRANSACTION ALERT
-function transactionFailedAlert(reason) {
+function transactionFailedAlert() {
         Swal.fire({
         icon: 'warning',
         title: `UNSUCCESSFUL`,
         html:`
-             ${reason}
+             There was a problem with your transaction, you can try again or contact our support
+             via Telegram messenger.
              <hr class="mt-4" />
              <div class="my-2">
                  Need support? Join
@@ -260,22 +270,24 @@ async function finishedTaskHandler(task, type) {
 
 
 // SPAWN TOAST NOTIFICATION
-async function spawnToast(icon, title) {
+async function spawnToast(icon, title, time=0) {
     const Toast = Swal.mixin({
         toast: true,
-        position: 'top',
+        position: 'center',
         iconColor: 'white',
         customClass: {
             popup: 'colored-toast'
         },
         showConfirmButton: false,
-        timer: 2500,
+        timer: time,
         timerProgressBar: true
     })
-    await Toast.fire({
+    let toast = await Toast.fire({
         icon: icon,
         title: title,
     })
+
+    return toast
 }
 
 

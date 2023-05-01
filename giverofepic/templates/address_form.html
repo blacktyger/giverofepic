@@ -12,19 +12,24 @@
             </span>
             <hr class="m-0 mt-1 me-2 mb-2 text-secondary"/>
             <span class="text-secondary">
-                Provide
-                <a href="#">
+                Provide your
+                <a href="https://play.google.com/store/apps/details?id=com.cypherstack.epicpay&hl=en&gl=US" target="_blank">
                     <img class="rounded" src="{% static 'img/photo_2022-12-27_16-46-56.jpg' %}" alt='.' height="25px">
                     <b>Epic-Pay</b>
-                </a> or
-                <a href="#">
-                    <img class="ms-1 rounded" src="{% static 'img/stack-wallet-icon.png' %}" alt='.' height="25px">
-                    <b>Stack-Wallet</b>
-                </a> address.
+                 address.
+                </a>
             </span>
             <p class="text-secondary">
-                Make sure your wallet is connected and fully synchronized with the network before claiming the reward.
+                Before claiming the reward, make sure your wallet is connected and fully synchronized with the network
+                <a href="#" data-bs-toggle="tooltip"
+                   data-bs-title='Wallet connection status is displayed at the top of the screen,
+                                  green dot with "CONNECTED" status means you are good to go.'>
+                    <b><sup><i class="fa-solid fa-circle-info text-light"></i></sup></b>
+                </a>.
+                Transaction may take up to few minutes, please keep your
+                wallet open during that time.
             </p>
+
 
         {# ADDRESS INPUT #}
         <div class="input-group pt-2 mt-4">
@@ -40,7 +45,7 @@
 
         {# USER FEEDBACK #}
         <div class="text-end mt-1" style="height: 15px;">
-            <span class="text-secondary addressFeedback"></span>
+            <span class="addressFeedback"></span>
         </div>
     </div>
 
@@ -48,7 +53,7 @@
     {# PROGRESS FEEDBACK #}
     <div class="row justify-content-center">
         <div class="col-auto">
-            <div class="text-muted text-center feedbackField fs-6"
+            <div class="text-center feedbackField fs-6"
                  style="height: 20px">
 
             </div>

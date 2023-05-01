@@ -10,7 +10,7 @@ import os
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "giverofepic.settings")
 django.setup()
 
-from .models import WalletState, get_wallet_status, Transaction, update_connection_details
+from .models import WalletState, get_wallet_status, Transaction
 from .default_settings import SUCCESS, ERROR
 from .epic_sdk import Wallet, utils
 from giveaway.models import Link
@@ -54,22 +54,25 @@ def send_new_transaction(tx_params: dict, state_id: str, link_code: str):
     # TODO: Uncomment for production
     # wallet.state.lock()  # Lock the wallet instance
 
-    # """ MAKE SURE WALLET BALANCE IS SUFFICIENT """ #
-    if not wallet.is_balance_enough(tx_params['amount'])[0]:
-        logger.warning('not enough balance')
-        this_task.meta['message'] = f"Not enough balance, please try again later."
-        this_task.save_meta()
-        return utils.response(ERROR, wallet.state.error_msg())
-
     ## >> Prepare tx_args and transaction slate
     tx_params['wallet_id'] = state_id
     tx_params['status'] = 'initialized'
-    print(tx_params)
+
+    ## >> Create new Transaction object
+    claim_link = Link.objects.get(code=link_code)
+    transaction = Transaction.objects.create(**tx_params)
+
+    # """ MAKE SURE WALLET BALANCE IS SUFFICIENT """ #
+    if not wallet.is_balance_enough(tx_params['amount'])[0]:
+        msg = this_task.meta['message'] = f"Not enough balance."
+        logger.warning(msg)
+        this_task.save_meta()
+        transaction.update_params(
+            status='failed',
+            data=utils.response(ERROR, msg))
+        return transaction.data
 
     try:
-        ## >> Create new Transaction object
-        transaction = Transaction.objects.create(**tx_params)
-
         ## >> Send the transaction
         response_ = wallet.send_transaction(
             method='epicbox',
@@ -78,30 +81,29 @@ def send_new_transaction(tx_params: dict, state_id: str, link_code: str):
             )
 
         if not response_['error']:
-            # TODO: Update frontend feedback
-            # Update transaction record
-            # print(response_)
             transaction.update_from_slate(response_['result'])
-            transaction.update_status('pending')
+            transaction.update_params(status='pending')
 
             # Update claiming link params
-            # Link.objects.filter(code=link_code).first().update_params(**{
-            #     "claim_date": timezone.now(),
-            #     "claimed": True,
-            #     "address": transaction.receiver_address
-            #     })
+            claim_link.update_params(**{
+                "claim_date": timezone.now(),
+                "claimed": True,
+                "address": transaction.receiver_address
+                })
 
             response = utils.response(SUCCESS, 'post tx success', {'tx_slate_id': transaction.tx_slate_id})
         else:
             response = utils.response(ERROR, f'post tx failed')
 
     except Exception as e:
-        # wallet.cancel_tx_slate(slate=init_tx_slate)
         response = utils.response(ERROR, f"post tx failed and canceled, {str(e)}")
 
     wallet.state.unlock()  # Release wallet
-
     logger.info(response)
+
+    transaction.update_params(data=response)
+    claim_link.update_params(transaction=transaction)
+
     return response
 
 

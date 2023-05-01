@@ -32,5 +32,5 @@ EPICBOX_DOMAIN = 'epicbox.epic.tech'
 EPICBOX_PORT = 0
 
 SECRETS_PATH_PREFIX = 'Wallets/'
-VALID_EVENT_NAMES = ['giveaway', 'faucet']
+VALID_EVENT_NAMES = ['giveaway', 'faucet', 'equinox']
 WALLETS = ['faucet_1', 'faucet_2']

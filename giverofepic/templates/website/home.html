@@ -1,9 +1,8 @@
 {% extends "website/base.html" %} {%  load static %} %}
 
 {% block body %}
-
     {%  if not object  %}
-        {%  include 'faucet/app.html' %}
+        {%  include 'website/offline.html' %}
 
     {%  else %}
         {%  if object.error %}
@@ -17,6 +16,12 @@
     {# FOOTER #}
     <div class="card-footer text-center mt-5">
        <div class="row">
+           <div class="col-12 mb-2 text-white">
+               Need support? Visit
+               <a href="https://t.me/GiverOfEpic" target="_blank" class="">
+                   <i class="fa-brands fa-telegram ms-1"></i> <b>GiverOfEpic</b>
+               </a>
+           </div>
            <div class="col-12">
                <div class="small text-muted mt-0">
                    <img src="{% static 'img/epicenter-logo-h500.png' %}" alt="epic-logo" height="20">
@@ -24,8 +29,9 @@
                    <a class="mx-1" href="https://blacktyg3r.com" target="_blank">
                         Created by <b>BT-LABS</b><sup><small>TM</small></sup>
                    </a>
-                   | <a class="mx-1" href="https://epic.tech" target="_blank">epic.tech</a>
+{#                   | <a class="mx-1" href="https://epic.tech" target="_blank">epic.tech</a>#}
                 </div>
+
            </div>
        </div>
     </div>

@@ -32,13 +32,13 @@ try:
 
     # if not wallet.state.epicbox_is_running:
     # for i in range(6):
-    wallet.run_epicbox(callback=Transaction.updater_callback)
+    wallet.run_epicbox(callback=Transaction.updater_callback, force_run=True)
     # wallet.state.epicbox_is_running = True
     # wallet.state.save()
 
 except Exception as e:
     print(e)
-    print(f"No database created yet, skipping initializing wallet")
+    logger.error(f"No database created yet, skipping initializing wallet")
     pass
 
 """Initialize Redis and Queue for managing task"""
