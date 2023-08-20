@@ -1,18 +1,16 @@
-from datetime import datetime, timedelta
-
-from django.utils import timezone
 from pydantic import Field
 from ninja import Schema
 
-from wallet.default_settings import GIVEAWAY_LINKS_LIFETIME_MINUTES
-
 
 class LinkSchema(Schema):
-    issuer_api_key: str | None = Field(default='')
-    personal: bool | None = True
+    event: str | None = Field(default='giveaway')
+    codes: list | None
+    amount: float | str | int | None = 0.1
+    api_key: str
+    qr_code: bool | None = False
+    expires: int | None = 60 * 24
+    address: str | None
+    quantity: int | None = 1
     reusable: int | None = 0
     currency: str | None = 'EPIC'
-    address: str | None = 'receiver_address'
-    expires: datetime | None = timezone.now() + timedelta(minutes=GIVEAWAY_LINKS_LIFETIME_MINUTES)
-    amount: float | str | int | None = 0.01
-    event: str | None = Field(default='giveaway')
+    personal: bool | None = False

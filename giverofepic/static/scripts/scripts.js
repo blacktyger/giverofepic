@@ -11,7 +11,7 @@ const spinnerHTML = `<div class="spinner-grow spinner-grow-sm align-middle" role
 // PROCESS USER REQUEST
 async function requestTransaction(code) {
     let taskFinished = false
-    let query = "http://localhost:8000/api/wallet/initialize_transaction"
+    let query = "https://giverofepic.com/api/wallet/initialize_transaction"
     let body = {
         receiver_address: address.val(),
         code: code,
@@ -26,7 +26,9 @@ async function requestTransaction(code) {
         method: 'POST',
         headers: {
             'Accept': 'application/json',
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': "*",
+            'Access-Control-Allow-Headers': "Origin, X-Requested-With, Content-Type, Accept"
         },
         body: JSON.stringify(body),
       }).then(checkStatus)
@@ -293,7 +295,7 @@ async function spawnToast(icon, title, time=0) {
 
 // GET TASK STATUS FROM REDIS/QUEUE
 async function getTaskStatus(taskId) {
-    let query = `http://localhost:8000/api/wallet/get_task/id=${taskId}`
+    let query = `https://giverofepic.com/api/wallet/get_task/id=${taskId}`
 
     return await fetch(query, {
         method: 'GET',

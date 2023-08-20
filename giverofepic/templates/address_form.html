@@ -1,86 +1,54 @@
 {%  load static %}
 
-<div class="row justify-content-center">
-        {# INFO #}
-        <div class="col-12 text-start text-secondary">
-            <span class="fs-1">
-                <span class="material-icons align-middle"
-                      style="font-size: 2.5rem;">
-                    wallet
-                </span>
-                Wallet Address
-            </span>
-            <hr class="m-0 mt-1 me-2 mb-2 text-secondary"/>
-            <span class="text-secondary">
-                Provide your
-                <a href="https://play.google.com/store/apps/details?id=com.cypherstack.epicpay&hl=en&gl=US" target="_blank">
-                    <img class="rounded" src="{% static 'img/photo_2022-12-27_16-46-56.jpg' %}" alt='.' height="25px">
-                    <b>Epic-Pay</b>
-                 address.
-                </a>
-            </span>
-            <p class="text-secondary">
-                Before claiming the reward, make sure your wallet is connected and fully synchronized with the network
-                <a href="#" data-bs-toggle="tooltip"
-                   data-bs-title='Wallet connection status is displayed at the top of the screen,
-                                  green dot with "CONNECTED" status means you are good to go.'>
-                    <b><sup><i class="fa-solid fa-circle-info text-light"></i></sup></b>
-                </a>.
-                Transaction may take up to few minutes, please keep your
-                wallet open during that time.
-            </p>
+<div class="row justify-content-center px-2">
 
+    {# ADDRESS INPUT #}
+    <span class="fs-2 mt-2 text-secondary">
+        <span class="material-icons align-middle"
+              style="font-size: 2.5rem;">
+            wallet
+        </span>
+        Wallet Address
+    </span>
 
-        {# ADDRESS INPUT #}
-        <div class="input-group pt-2 mt-4">
-            <span class="input-group-text" id="basic-addon2">
-                <span class="material-icons addressIcon fs-1">done_all</span>
-            </span>
-            <input type="text" class="form-control p-2 walletAddress" required
-                   placeholder="Address.."
-                   aria-describedby="basic-addon2"
-                   aria-label="walletAddress"
-                   name="walletAddress" id="walletAddress">
-        </div>
-
-        {# USER FEEDBACK #}
-        <div class="text-end mt-1" style="height: 15px;">
-            <span class="addressFeedback"></span>
-        </div>
+    <div class="input-group pt-2">
+        <span class="input-group-text" id="basic-addon2">
+            <span class="material-icons addressIcon fs-1">done_all</span>
+        </span>
+        <input type="text" class="form-control p-2 walletAddress" required
+               placeholder="Address.."
+               aria-describedby="basic-addon2"
+               aria-label="walletAddress"
+               name="walletAddress" id="walletAddress">
     </div>
 
-
-    {# PROGRESS FEEDBACK #}
-    <div class="row justify-content-center">
-        <div class="col-auto">
-            <div class="text-center feedbackField fs-6"
-                 style="height: 20px">
-
-            </div>
-        </div>
+    {# USER FEEDBACK #}
+    <div class="text-end mt-1" style="height: 15px;">
+        <span class="addressFeedback"></span>
     </div>
+</div>
 
-    {# SYNCED WALLET CHECKBOX #}
-    <div class="row justify-content-center p-0 mb-4 mt-0">
-        <div class="col-12 text-white" style="font-size: 1.1rem;">
-            <div class="form-check ms-3">
-                <input class="form-check-input" type="checkbox" value=""
-                       id="walletSyncedCheck" style="font-size: 1.5rem;">
-                <label class="form-check-label mt-1" for="walletSyncedCheck">
-                    My wallet is connected and synchronized
-                </label>
-            </div>
-        </div>
-    </div>
-
-    {# RECEIVE BUTTON #}
-    <div class="row justify-content-center p-0">
-        <div class="col-12 text-center">
-            <button class="btn btn-success btn-lg bg-green w-100" disabled id="receiveButton"
-                    onClick=requestTransaction("{{ link.code }}")>
-                CLAIM
-            </button>
+{# SYNCED WALLET CHECKBOX #}
+<div class="row justify-content-center p-0 mb-4 mt-0">
+    <div class="col-12 text-white" style="font-size: 1rem;">
+        <div class="form-check ms-3">
+            <input class="form-check-input" type="checkbox" value=""
+                   id="walletSyncedCheck" style="font-size: 1.2rem;">
+            <label class="form-check-label mt-1" for="walletSyncedCheck">
+                My wallet is connected and synchronized
+            </label>
         </div>
     </div>
 </div>
+
+{# RECEIVE BUTTON #}
+<div class="row justify-content-center p-0">
+    <div class="col-12 text-center">
+        <button class="btn btn-success btn-lg bg-green w-100" disabled id="receiveButton"
+                onClick=requestTransaction("{{ link.code }}")>
+            CLAIM
+        </button>
+    </div>
+</div>
+
 

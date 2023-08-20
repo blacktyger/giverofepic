@@ -9,14 +9,13 @@ checkbox.on('input', async function() {updateAddress()})
 
 
 function updateAddress() {
-    console.log('sadasd')
-
     if (!addressField.val()) {
         addrIcon.css('color', 'grey')
         button.attr('disabled', true)
         addrText.text('')
     } else {
-        if (addressField.val().trim().split('@')[0].length === 52) {
+        if (addressField.val().trim().split('@')[0].length === 52
+                && addressField.val().includes("@epicbox")) {
             addrIcon.css('color', 'green')
             addrText.text('')
 

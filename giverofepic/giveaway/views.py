@@ -33,8 +33,7 @@ class ClaimLinkView(generic.DetailView):
         #     logger.info(link.request_transaction())
         #     context['js_function'] = "sendTransaction()"
 
-        if not link.personal:
-            logger.info(f"In Blanco link ({link.event}) without specified receiver")
+        # if not link.personal:
+        #     logger.info(f"In Blanco link ({link.event}) without specified receiver")
 
-        pprint(context)
         return context

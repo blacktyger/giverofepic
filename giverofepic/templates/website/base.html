@@ -6,9 +6,11 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="apple-mobile-web-app-title" content="GiverOfEpic">
+
         <link rel="icon" type="image/png" sizes="32x32" href="{%  static '/img/epic_coin_30px.jpg' %}">
         <link rel="icon" type="image/png" sizes="16x16" href="{%  static '/img/epic_coin_30px.jpg' %}">
-
+        <link rel="apple-touch-icon" type="image/png" href="{%  static '/img/apple-touch-icon.png' %}">
         <!-- CSS -->
         <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
         <link href="{%  static '/cdns/5.3.0_dist_css_bootstrap.css' %}" rel="stylesheet">
@@ -36,7 +38,7 @@
         <section class="app-body">
             <div class="row justify-content-center">
                 <div class="col-12 px-2"
-                     style="min-width: 420px;
+                     style="min-width: 380px;
                             max-width: 680px">
                     {% block body %} {% endblock %}
                 </div>

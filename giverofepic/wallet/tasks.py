@@ -24,7 +24,7 @@ logger = get_logger()
 redis_conn = django_rq.get_connection('default')
 
 
-@job('epicbox', redis_conn, timeout=30)
+@job('epicbox', redis_conn, timeout=120)
 def send_new_transaction(tx_params: dict, state_id: str, link_code: str):
     """
     :param tx_params: dict
@@ -37,14 +37,16 @@ def send_new_transaction(tx_params: dict, state_id: str, link_code: str):
 
     # """ VALIDATE TRANSACTION PARAMS """ #
     tx_args = Transaction.validate_tx_args(**tx_params)
-    if tx_args['error']: return tx_args
+    if tx_args['error']:
+        logger.warning(tx_args['message'])
+        return tx_args
 
-    wallet = Wallet()
-    wallet.state = WalletState.objects.get(id=state_id)
-    wallet = wallet.load_from_state()
+    # """ GET WALLET INSTANCE """ #
+    wallet_state = WalletState.objects.get(id=state_id)
+    wallet = Wallet(path=wallet_state.wallet_dir)
 
     # """ GET OR WAIT FOR UNLOCKED INSTANCE """ #
-    is_unlocked = get_wallet_status(wallet)
+    is_unlocked = get_wallet_status(wallet_state)
 
     if is_unlocked['error']:
         this_task.meta['message'] = f"Can't process your request right now, please try again later."
@@ -52,7 +54,7 @@ def send_new_transaction(tx_params: dict, state_id: str, link_code: str):
         return is_unlocked
 
     # TODO: Uncomment for production
-    # wallet.state.lock()  # Lock the wallet instance
+    # wallet_state.lock()  # Lock the wallet instance
 
     ## >> Prepare tx_args and transaction slate
     tx_params['wallet_id'] = state_id
@@ -85,11 +87,15 @@ def send_new_transaction(tx_params: dict, state_id: str, link_code: str):
             transaction.update_params(status='pending')
 
             # Update claiming link params
-            claim_link.update_params(**{
-                "claim_date": timezone.now(),
-                "claimed": True,
-                "address": transaction.receiver_address
-                })
+            if claim_link.reusable > 0:
+                claim_link.reusable -= 1
+                claim_link.save()
+            else:
+                claim_link.update_params(**{
+                    "claim_date": timezone.now(),
+                    "claimed": True,
+                    "address": transaction.receiver_address
+                    })
 
             response = utils.response(SUCCESS, 'post tx success', {'tx_slate_id': transaction.tx_slate_id})
         else:
@@ -98,7 +104,7 @@ def send_new_transaction(tx_params: dict, state_id: str, link_code: str):
     except Exception as e:
         response = utils.response(ERROR, f"post tx failed and canceled, {str(e)}")
 
-    wallet.state.unlock()  # Release wallet
+    wallet_state.unlock()  # Release wallet
     logger.info(response)
 
     transaction.update_params(data=response)

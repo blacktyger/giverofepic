@@ -107,26 +107,28 @@ class Transaction(models.Model):
         tx_slate_id = parse_uuid(line)
 
         if tx_slate_id and 'wallet_' not in line:
-            tx = cls.objects.filter(tx_slate_id=tx_slate_id[0]).first()
             logger.critical(line)
-            if "finalized successfully" in line:
-                tx.update_params(status='finalized')
-            elif 'error' in line:
-                tx.update_params(status='failed')
+            tx = cls.objects.filter(tx_slate_id=tx_slate_id[0]).first()
+
+            if tx:
+                if "finalized successfully" in line:
+                    tx.update_params(status='finalized')
+                elif 'error' in line:
+                    tx.update_params(status='failed')
 
     @staticmethod
     def validate_tx_args(amount: float | int | str, receiver_address: str, event: str):
-        receiver_address = receiver_address.split('@')[0].strip()
+        _address = receiver_address.split('@')[0].strip()
 
-        if 'http' in receiver_address:
-            receiver_address = receiver_address.split('//')[-1]
+        if 'http' in _address:
+            _address = _address.split('//')[-1]
 
-        print(receiver_address)
+        print(_address)
 
         try:
-            if 0.00000001 > float(amount) <= MAX_AMOUNT:
+            if 0.00000001 < float(amount) > MAX_AMOUNT:
                 return utils.response(ERROR, f'Invalid amount (0 > {amount} < {MAX_AMOUNT})')
-            elif len(receiver_address) != 52:
+            elif len(_address) != 52 or '@epicbox' not in receiver_address:
                 return utils.response(ERROR, 'Invalid receiver_address')
 
             if event not in VALID_EVENT_NAMES:
@@ -187,7 +189,7 @@ def connection_authorized(ip, address):
     return utils.response(SUCCESS, 'authorized')
 
 
-def get_wallet_status(wallet):
+def get_wallet_status(wallet_state):
     """
     :param wallet:
     :return:
@@ -195,18 +197,18 @@ def get_wallet_status(wallet):
     re_try = NUM_OF_ATTEMPTS
 
     # Refresh wallet state from DB
-    WalletState.objects.get(id=wallet.state.id)
+    WalletState.objects.get(id=wallet_state.id)
 
     # TRY NUM_OF_ATTEMPTS WITH ATTEMPTS_INTERVAL TILL FAIL
-    while WalletState.objects.get(id=wallet.state.id).is_locked and re_try:
+    while WalletState.objects.get(id=wallet_state.id).is_locked and re_try:
         print(f"locked, {re_try} re-try attempts left ")
         re_try -= 1
         time.sleep(ATTEMPTS_INTERVAL)
 
-    if WalletState.objects.get(id=wallet.state.id).is_locked:
-        return utils.response(ERROR, wallet.state.error_msg())
+    if WalletState.objects.get(id=wallet_state.id).is_locked:
+        return utils.response(ERROR, wallet_state.error_msg())
 
-    wallet.state = WalletState.objects.get(id=wallet.state.id)
+    wallet_state = WalletState.objects.get(id=wallet_state.id)
     return utils.response(SUCCESS, 'wallet ready')
 
 

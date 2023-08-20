@@ -9,7 +9,10 @@ import wallet.epic_sdk.utils as utils
 from .default_settings import *
 from . import tasks
 
-from .models import Transaction, WalletState, connection_details, connection_authorized
+from .models import (
+    WalletState, connection_details,
+    connection_authorized, Transaction
+    )
 from .schema import TxRequestSchema
 from giveaway.models import Link
 
@@ -22,12 +25,11 @@ try:
     Initialize Server Wallet - Epic-Box Sender I,
     - executing outgoing transactions.
     """
-    wallet = Wallet()
-    NAME = "epicbox_1"
-    wallet.state, _ = WalletState.objects.get_or_create(name=NAME)
-    wallet.load_from_state()
+    wallet_name = "epicbox_1"
+    wallet_state, _ = WalletState.objects.get_or_create(name=wallet_name)
+    wallet = Wallet(path=wallet_state.wallet_dir)
     wallet.run_epicbox(callback=Transaction.updater_callback, force_run=True)
-
+    # Link.create_batch(num=1)
 
 except Exception as e:
     print(e)
@@ -57,8 +59,11 @@ def initialize_transaction(request, tx: TxRequestSchema):
 
         tx_params = tx_request['result'].tx_params()
 
-        if not tx_params['receiver_address']:
-            tx_params['receiver_address'] = tx.receiver_address
+        # TODO: Better handling this
+        tx_params['receiver_address'] = tx.receiver_address
+        # if tx_params['event'] == 'equinox':
+        # elif not tx_params['receiver_address']:
+        #     tx_params['receiver_address'] = tx.receiver_address
 
         if tx_params['event'] == 'faucet':
             # """ AUTHORIZE CONNECTION WITH TIME-LOCK FUNCTION """ #
@@ -68,7 +73,7 @@ def initialize_transaction(request, tx: TxRequestSchema):
 
         # """ PREPARE TASK TO ENQUEUE """ #
         task = tasks.send_new_transaction.delay(
-            state_id=wallet.state.id,
+            state_id=wallet_state.id,
             tx_params=tx_params,
             link_code=tx.code)
 
